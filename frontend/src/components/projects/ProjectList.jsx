@@ -48,7 +48,6 @@ export function ProjectList({
   const getId = getEntityId;
 
   const isSuperAdmin = effectiveUser?.role === "superadmin";
-  const isAdmin = effectiveUser?.role === "admin";
   const userId = getEntityId(effectiveUser);
 
   const isProjectOwner = (p) =>
