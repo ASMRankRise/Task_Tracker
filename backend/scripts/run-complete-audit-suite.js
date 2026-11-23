@@ -8,6 +8,11 @@ const User = require("../src/models/User");
 const Project = require("../src/models/Project");
 const Task = require("../src/models/Task");
 const Comment = require("../src/models/Comment");
+const TaskActivity = require("../src/models/TaskActivity");
+
+TaskActivity.create = async (doc) => doc;
+TaskActivity.insertMany = async (docs) => docs;
+TaskActivity.deleteMany = async () => ({ deletedCount: 0 });
 
 // Controllers
 const {
@@ -531,7 +536,7 @@ async function runTestSuite() {
       _id: new mongoose.Types.ObjectId(),
       project: projectIdA,
       assignedTo: [{ _id: memberAId }],
-      status: "todo",
+      status: "testing",
       save: async () => {},
       populate: async () => {},
     };

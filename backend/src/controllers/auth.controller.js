@@ -4,6 +4,20 @@ const jwt = require("jsonwebtoken");
 
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+const getRefreshSecret = () =>
+  process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET;
+
+const verifyRefreshToken = (token) => {
+  try {
+    return jwt.verify(token, getRefreshSecret());
+  } catch (err) {
+    if (process.env.JWT_REFRESH_SECRET && process.env.JWT_SECRET) {
+      return jwt.verify(token, process.env.JWT_SECRET);
+    }
+    throw err;
+  }
+};
+
 const getCookieOptions = () => {
   const isProduction = process.env.NODE_ENV === "production";
   return {
@@ -72,7 +86,7 @@ const register = async (req, res) => {
       });
     }
 
-    const hashedPassword = await bcrypt.hash(password, 12);
+    const hashedPassword = await bcrypt.hash(password, 10);
 
     const user = await User.create({
       name: trimmedName,
@@ -92,7 +106,10 @@ const register = async (req, res) => {
   } catch (error) {
     console.error("Register error:", error);
 
-    if (error.code === 11000) {
+    if (
+      error.code === 11000 ||
+      String(error.message).includes("UNIQUE constraint failed: users.email")
+    ) {
       return res.status(409).json({
         message: "Email already registered",
       });
@@ -163,7 +180,7 @@ const login = async (req, res) => {
         type: "refresh",
         tokenVersion,
       },
-      process.env.JWT_SECRET,
+      getRefreshSecret(),
       { expiresIn: process.env.REFRESH_TOKEN_DAYS || "7d" },
     );
 
@@ -205,7 +222,7 @@ const refresh = async (req, res) => {
       });
     }
 
-    const decoded = jwt.verify(refreshToken, process.env.JWT_SECRET);
+    const decoded = verifyRefreshToken(refreshToken);
 
     if (decoded.type !== "refresh") {
       return res.status(401).json({
@@ -234,7 +251,18 @@ const refresh = async (req, res) => {
       { expiresIn: process.env.ACCESS_TOKEN_EXPIRES_IN || "15m" },
     );
 
+    const newRefreshToken = jwt.sign(
+      {
+        userId: user._id.toString(),
+        type: "refresh",
+        tokenVersion: user.tokenVersion ?? 0,
+      },
+      getRefreshSecret(),
+      { expiresIn: process.env.REFRESH_TOKEN_DAYS || "7d" },
+    );
+
     res.cookie("accessToken", accessToken, getAccessCookieOptions());
+    res.cookie("refreshToken", newRefreshToken, getRefreshCookieOptions());
 
     return res.status(200).json({
       message: "Access token refreshed",
@@ -251,7 +279,8 @@ const refresh = async (req, res) => {
 // LOGOUT
 const logout = async (req, res) => {
   try {
-    const accessToken = req.cookies?.accessToken;
+    const authHeader = req.headers.authorization?.replace(/^Bearer\s+/i, "");
+    const accessToken = req.cookies?.accessToken || authHeader;
     const refreshToken = req.cookies?.refreshToken;
 
     let userId = null;
@@ -270,7 +299,7 @@ const logout = async (req, res) => {
 
     if (!userId && refreshToken) {
       try {
-        const decoded = jwt.verify(refreshToken, process.env.JWT_SECRET);
+        const decoded = verifyRefreshToken(refreshToken);
 
         if (decoded.type === "refresh") {
           userId = decoded.userId;

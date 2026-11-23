@@ -1,6 +1,15 @@
+
 import { useState } from "react";
 import { StatusBadge } from "../common/Badge";
 import { useToast } from "../../context/ToastContext";
+
+const STATUS_OPTIONS = [
+  { value: "todo", label: "To Do" },
+  { value: "in-progress", label: "In Progress" },
+  { value: "testing", label: "Testing" },
+  { value: "completed", label: "Completed" },
+  { value: "done", label: "Done" },
+];
 
 export function TaskStatusDropdown({
   status = "todo",
@@ -13,18 +22,30 @@ export function TaskStatusDropdown({
   const [isUpdating, setIsUpdating] = useState(false);
   const { error: toastError, success: toastSuccess } = useToast();
 
+  const currentIndex = STATUS_OPTIONS.findIndex((opt) => opt.value === status);
+  const isDone = status === "done" || currentIndex === 4;
+
   if (!canEdit) {
     return <StatusBadge status={status} size={size} />;
   }
 
   const handleChange = async (e) => {
     e.stopPropagation();
+
     const newStatus = e.target.value;
-    if (newStatus === status || isUpdating || disabled) return;
+    if (newStatus === status || isUpdating || disabled || isDone) return;
+
+    const confirmed = window.confirm(
+      `Are you sure you want to change status from "${status}" to "${newStatus}"?`
+    );
+
+    if (!confirmed) return;
 
     setIsUpdating(true);
+
     try {
       const res = await onUpdate?.(newStatus);
+
       if (res?.success === false) {
         toastError(res?.error || "Failed to update status");
       } else {
@@ -53,16 +74,25 @@ export function TaskStatusDropdown({
       <select
         aria-label="Change status"
         value={status || "todo"}
-        disabled={isUpdating || disabled}
+        disabled={isUpdating || disabled || isDone}
         onChange={handleChange}
         className={`rounded border border-border bg-surface-subtle font-medium text-text-primary outline-none focus:border-brand cursor-pointer disabled:opacity-50 transition-colors shadow-subtle ${sizeClasses} ${className}`}
       >
-        <option value="todo">To Do</option>
-        <option value="in-progress">In Progress</option>
-        <option value="testing">Testing</option>
-        <option value="completed">Completed</option>
-        <option value="done">Done</option>
+        {STATUS_OPTIONS.map((opt, index) => {
+          const isCurrent = opt.value === status;
+          const isNext = index === currentIndex + 1;
+          return (
+            <option
+              key={opt.value}
+              value={opt.value}
+              disabled={!isCurrent && !isNext}
+            >
+              {opt.label}
+            </option>
+          );
+        })}
       </select>
+
       {isUpdating && (
         <span className="h-3 w-3 animate-spin rounded-full border-2 border-brand border-t-transparent shrink-0" />
       )}

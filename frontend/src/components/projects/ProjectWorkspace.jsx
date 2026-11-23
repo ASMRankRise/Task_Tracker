@@ -832,6 +832,7 @@ export function ProjectWorkspace({
         project={project}
         currentUser={effectiveUser}
         canManage={canManageProject}
+        canRemoveMember={canManageProject}
         onAddMember={onAddMember}
         onRemoveMember={onRemoveMember}
         onAssignProjectHead={onAssignProjectHead}

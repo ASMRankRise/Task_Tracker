@@ -13,6 +13,7 @@ import { useAuth } from "../../context/AuthContext";
 import { getEntityId, getTaskPermissions } from "../../utils/taskPermissions";
 import TaskStatusDropdown from "./TaskStatusDropdown";
 import TaskPriorityDropdown from "./TaskPriorityDropdown";
+import TaskActivityHistory from "./TaskActivityHistory";
 
 export function TaskDetailModal({
   isOpen,
@@ -40,6 +41,9 @@ export function TaskDetailModal({
   const [isEditing, setIsEditing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
+
+  const triggerHistoryRefresh = () => setHistoryRefreshKey((prev) => prev + 1);
 
   useEffect(() => {
     if (task) {
@@ -129,7 +133,7 @@ export function TaskDetailModal({
       const payload = {
         title: title.trim(),
         description: description.trim(),
-        status,
+        ...(status !== task.status ? { status } : {}),
         priority,
         dueDate: dueDate ? new Date(dueDate).toISOString() : null,
       };
@@ -198,7 +202,11 @@ export function TaskDetailModal({
               canEdit={canChangeStatus}
               onUpdate={async (newStatus) => {
                 setStatus(newStatus);
-                return await updateHandler?.(task._id || task.id, { status: newStatus });
+                const res = await updateHandler?.(task._id || task.id, { status: newStatus });
+                if (res?.success !== false) {
+                  triggerHistoryRefresh();
+                }
+                return res;
               }}
               size="xs"
             />
@@ -207,7 +215,11 @@ export function TaskDetailModal({
               canEdit={canChangePriority}
               onUpdate={async (newPriority) => {
                 setPriority(newPriority);
-                return await updateHandler?.(task._id || task.id, { priority: newPriority });
+                const res = await updateHandler?.(task._id || task.id, { priority: newPriority });
+                if (res?.success !== false) {
+                  triggerHistoryRefresh();
+                }
+                return res;
               }}
               size="xs"
             />
@@ -252,14 +264,31 @@ export function TaskDetailModal({
                 </label>
                 <select
                   value={status}
+                  disabled={task.status === "done"}
                   onChange={(e) => setStatus(e.target.value)}
-                  className="h-9 w-full rounded-md border border-border bg-surface px-3 text-sm text-text-primary outline-none focus:border-brand cursor-pointer shadow-subtle"
+                  className="h-9 w-full rounded-md border border-border bg-surface px-3 text-sm text-text-primary outline-none focus:border-brand cursor-pointer shadow-subtle disabled:opacity-50"
                 >
-                  <option value="todo">To do</option>
-                  <option value="in-progress">In progress</option>
-                  <option value="testing">Testing</option>
-                  <option value="completed">Completed</option>
-                  <option value="done">Done</option>
+                  {(() => {
+                    const statusOrder = [
+                      { value: "todo", label: "To do" },
+                      { value: "in-progress", label: "In progress" },
+                      { value: "testing", label: "Testing" },
+                      { value: "completed", label: "Completed" },
+                      { value: "done", label: "Done" },
+                    ];
+                    const currentIdx = statusOrder.findIndex(
+                      (opt) => opt.value === (task.status || "todo"),
+                    );
+                    return statusOrder.map((opt, idx) => (
+                      <option
+                        key={opt.value}
+                        value={opt.value}
+                        disabled={idx !== currentIdx && idx !== currentIdx + 1}
+                      >
+                        {opt.label}
+                      </option>
+                    ));
+                  })()}
                 </select>
               </div>
 
@@ -413,7 +442,11 @@ export function TaskDetailModal({
                   canEdit={canChangeStatus}
                   onUpdate={async (newStatus) => {
                     setStatus(newStatus);
-                    return await updateHandler?.(task._id || task.id, { status: newStatus });
+                    const res = await updateHandler?.(task._id || task.id, { status: newStatus });
+                    if (res?.success !== false) {
+                      triggerHistoryRefresh();
+                    }
+                    return res;
                   }}
                   size="sm"
                 />
@@ -428,11 +461,23 @@ export function TaskDetailModal({
                   canEdit={canChangePriority}
                   onUpdate={async (newPriority) => {
                     setPriority(newPriority);
-                    return await updateHandler?.(task._id || task.id, { priority: newPriority });
+                    const res = await updateHandler?.(task._id || task.id, { priority: newPriority });
+                    if (res?.success !== false) {
+                      triggerHistoryRefresh();
+                    }
+                    return res;
                   }}
                   size="sm"
                 />
               </div>
+            </div>
+
+            {/* Activity History Section */}
+            <div className="pt-3 border-t border-border">
+              <TaskActivityHistory
+                taskId={task._id || task.id}
+                refreshTrigger={historyRefreshKey}
+              />
             </div>
 
             {/* Footer Actions */}

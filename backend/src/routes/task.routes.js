@@ -7,6 +7,7 @@ const {
   createTask,
   getTasks,
   getTaskById,
+  getTaskHistory,
   updateTask,
   deleteTask,
   createComment,
@@ -17,6 +18,7 @@ router.post("/", authMiddleware, createTask);
 
 router.get("/", authMiddleware, getTasks);
 
+router.get("/:taskId/history", authMiddleware, getTaskHistory);
 router.get("/:taskId", authMiddleware, getTaskById);
 
 router.patch("/:taskId", authMiddleware, updateTask);

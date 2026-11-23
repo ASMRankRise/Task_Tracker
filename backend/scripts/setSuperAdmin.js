@@ -1,45 +1,35 @@
 require("dotenv").config();
-
-const mongoose = require("mongoose");
-const User = require("../src/models/User");
+const { spawnSync } = require("child_process");
 
 async function setSuperAdmin() {
-  try {
-    const email = process.argv[2]?.trim().toLowerCase();
+  const email = process.argv[2]?.trim().toLowerCase();
+  const isRemote = process.argv.includes("--remote") || !process.argv.includes("--local");
+  const targetFlag = isRemote ? "--remote" : "--local";
 
-    if (!email) {
-      console.log("Please provide a registered email: node scripts/setSuperAdmin.js <email>");
-      process.exitCode = 1;
-      return;
-    }
-
-    if (!process.env.MONGODB_URI) {
-      console.error("MONGODB_URI is not set in environment or .env file.");
-      process.exitCode = 1;
-      return;
-    }
-
-    await mongoose.connect(process.env.MONGODB_URI);
-    const user = await User.findOne({ email });
-
-    if (!user) {
-      console.log(`User '${email}' not found. Register this email first.`);
-      process.exitCode = 1;
-      return;
-    }
-
-    user.role = "superadmin";
-    user.tokenVersion = (user.tokenVersion ?? 0) + 1;
-    await user.save();
-
-    console.log(`Success: ${user.email} (${user.name}) is now a Super Admin.`);
-  } catch (error) {
-    console.error("Error setting Super Admin:", error.message);
+  if (!email || email.startsWith("--")) {
+    console.log("Usage: node scripts/setSuperAdmin.js <email> [--remote | --local]");
     process.exitCode = 1;
-  } finally {
-    await mongoose.disconnect();
+    return;
+  }
+
+  const safeEmail = email.replace(/'/g, "''");
+  const sql = `UPDATE users SET role = 'superadmin', token_version = token_version + 1, updated_at = datetime('now') WHERE email = '${safeEmail}' COLLATE NOCASE;`;
+
+  console.log(`Setting Super Admin for '${email}' (${targetFlag})...`);
+  const wranglerCmd = process.platform === "win32" ? "npx.cmd" : "npx";
+  const result = spawnSync(
+    wranglerCmd,
+    ["wrangler", "d1", "execute", "taskmanagementsys", targetFlag, "--command", sql],
+    { stdio: "inherit", shell: true },
+  );
+
+  if (result.status !== 0) {
+    process.exitCode = result.status || 1;
+  } else {
+    console.log(`Success: Role updated to superadmin in D1.`);
   }
 }
 
 setSuperAdmin();
+
 

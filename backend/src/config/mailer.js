@@ -1,13 +1,32 @@
-
 const nodemailer = require("nodemailer");
 
-const transporter = nodemailer.createTransport({
-    service: "gmail",
-    auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS,
-    },
-});
+let transporter = null;
+
+const getTransporter = () => {
+    if (transporter) return transporter;
+    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+        return null;
+    }
+    try {
+        transporter = nodemailer.createTransport({
+            host: "smtp.gmail.com",
+            port: 465,
+            secure: true,
+            family: 4,
+            connectionTimeout: 5000,
+            greetingTimeout: 5000,
+            socketTimeout: 5000,
+            auth: {
+                user: process.env.EMAIL_USER,
+                pass: process.env.EMAIL_PASS,
+            },
+        });
+        return transporter;
+    } catch (err) {
+        console.warn("[Mailer] Failed to initialize transport:", err.message);
+        return null;
+    }
+};
 
 const escapeHtml = (value = "") =>
     String(value).replace(/[&<>"']/g, (char) => ({
@@ -24,6 +43,11 @@ const sendTaskAssignmentEmail = async ({
     projectName,
     assignedBy,
 }) => {
+    const transport = getTransporter();
+    if (!transport) {
+        return null;
+    }
+
     const dueDate = task.dueDate
         ? new Date(task.dueDate).toLocaleDateString("en-IN", {
             day: "2-digit",
@@ -38,11 +62,12 @@ const sendTaskAssignmentEmail = async ({
     const priority = escapeHtml(task.priority);
     const assigner = escapeHtml(assignedBy);
 
-    return transporter.sendMail({
-        from: `"Project Management" <${process.env.EMAIL_USER}>`,
-        to,
-        subject: `New Task Assigned: ${task.title}`,
-        text: `A new task has been assigned to you.
+    try {
+        return await transport.sendMail({
+            from: `"Project Management" <${process.env.EMAIL_USER}>`,
+            to,
+            subject: `New Task Assigned: ${task.title}`,
+            text: `A new task has been assigned to you.
 
 Task: ${task.title}
 Description: ${task.description || "No description"}
@@ -52,7 +77,7 @@ Due Date: ${dueDate}
 Assigned By: ${assignedBy}
 
 Please login to your Project Management System to view the task.`,
-        html: `
+            html: `
       <div style="background:#f4f5f7;padding:30px;font-family:Arial,sans-serif;">
         <div style="max-width:560px;margin:auto;background:#ffffff;border-radius:12px;overflow:hidden;">
           <div style="background:#2563eb;padding:24px;color:#ffffff;">
@@ -90,7 +115,11 @@ Please login to your Project Management System to view the task.`,
         </div>
       </div>
     `,
-    });
+        });
+    } catch (error) {
+        console.warn(`[Mailer] Failed to send email to ${to}:`, error.message || error);
+        return null;
+    }
 };
 
 module.exports = { sendTaskAssignmentEmail };

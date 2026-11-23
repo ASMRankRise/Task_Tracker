@@ -1,7 +1,7 @@
 const { Redis } = require("@upstash/redis");
 
-const TIMEOUT = 2000;
-const RETRY_DELAY = 30000;
+const TIMEOUT = Number(process.env.REDIS_TIMEOUT) || 10000;
+const RETRY_DELAY = Number(process.env.REDIS_RETRY_DELAY) || 5000;
 
 const configured =
   Boolean(process.env.UPSTASH_REDIS_REST_URL &&
@@ -17,7 +17,7 @@ const client = configured
 let unavailableUntil = 0;
 
 if (!configured) {
-  console.warn("Redis not configured. Using MongoDB fallback.");
+  console.warn("[Redis] Not configured. Bypassing cache and using D1 directly.");
 }
 
 const execute = async (method, args, fallback) => {
@@ -42,7 +42,9 @@ const execute = async (method, args, fallback) => {
     return result;
   } catch (error) {
     unavailableUntil = Date.now() + RETRY_DELAY;
-    console.warn(`Redis connection error (${error.message}). Bypassing cache for 30s.`);
+    console.warn(
+      `[Redis] Connection error (${error.message}). Bypassing cache for ${Math.round(RETRY_DELAY / 1000)}s.`
+    );
     return fallback;
   } finally {
     clearTimeout(timeoutId);
@@ -51,6 +53,7 @@ const execute = async (method, args, fallback) => {
 
 module.exports = {
   get: (...args) => execute("get", args, null),
-  set: (...args) => execute("set", args, "OK"),
-  incr: (...args) => execute("incr", args, 1),
+  set: (...args) => execute("set", args, null),
+  incr: (...args) => execute("incr", args, null),
+  del: (...args) => execute("del", args, null),
 };

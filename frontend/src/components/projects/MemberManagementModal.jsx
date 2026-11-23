@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 import Modal from "../common/Modal";
 import Avatar from "../common/Avatar";
@@ -9,6 +10,7 @@ export function MemberManagementModal({
   onClose,
   project,
   canManage = false,
+  canRemoveMember = false,
   onAddMember,
   onRemoveMember,
   onAssignProjectHead,
@@ -58,7 +60,7 @@ export function MemberManagementModal({
     try {
       const res = await onAssignProjectHead?.(project._id || project.id, targetEmail);
       if (res?.success !== false) {
-        setSuccess(`Assigned Project Head successfully.`);
+        setSuccess("Assigned Project Head successfully.");
       } else {
         setError(res?.error || "Failed to assign Project Head.");
       }
@@ -73,7 +75,7 @@ export function MemberManagementModal({
     try {
       const res = await onRemoveProjectHead?.(project._id || project.id);
       if (res?.success !== false) {
-        setSuccess(`Project Head removed successfully.`);
+        setSuccess("Project Head removed successfully.");
       } else {
         setError(res?.error || "Failed to remove Project Head.");
       }
@@ -116,7 +118,6 @@ export function MemberManagementModal({
         {error && <Alert message={error} type="error" />}
         {success && <Alert message={success} type="success" />}
 
-        {/* Add Member Form (if permitted) */}
         {canManage && (
           <form
             onSubmit={handleAdd}
@@ -152,14 +153,23 @@ export function MemberManagementModal({
           </form>
         )}
 
-        {/* Member Directory */}
         <div className="space-y-2">
           <div className="flex items-center justify-between text-[12px] font-semibold text-text-secondary">
-            <span>Project members ({members.length + (owner ? 1 : 0)})</span>
+            <span>
+              Project members (
+              {
+                new Set([
+                  ...(ownerId ? [String(ownerId)] : []),
+                  ...members.map((m) =>
+                    String(typeof m === "object" ? m?._id || m?.id : m),
+                  ),
+                ]).size
+              }
+              )
+            </span>
           </div>
 
           <div className="max-h-64 overflow-y-auto divide-y divide-border-subtle rounded-lg border border-border bg-surface shadow-subtle">
-            {/* Owner Row */}
             {owner && (
               <div className="flex items-center justify-between p-3 bg-surface-subtle/40">
                 <div className="flex items-center gap-2.5 min-w-0">
@@ -180,7 +190,6 @@ export function MemberManagementModal({
               </div>
             )}
 
-            {/* Member Rows */}
             {members.map((member) => {
               const mId = typeof member === "object" ? member?._id || member?.id : member;
               const isOwner = String(mId) === String(ownerId);
@@ -236,16 +245,19 @@ export function MemberManagementModal({
                             Make Head
                           </button>
                         ) : null}
-                        <button
-                          type="button"
-                          disabled={removingMember}
-                          onClick={() => handleRemove(member)}
-                          className="text-[13px] font-medium text-[#991B1B] dark:text-[#F87171] hover:underline p-1 transition-colors cursor-pointer"
-                          title="Remove member from project"
-                        >
-                          Remove
-                        </button>
                       </>
+                    )}
+
+                    {canRemoveMember && (
+                      <button
+                        type="button"
+                        disabled={removingMember}
+                        onClick={() => handleRemove(member)}
+                        className="text-[13px] font-medium text-[#991B1B] dark:text-[#F87171] hover:underline p-1 transition-colors cursor-pointer"
+                        title="Remove member from project"
+                      >
+                        Remove
+                      </button>
                     )}
                   </div>
                 </div>

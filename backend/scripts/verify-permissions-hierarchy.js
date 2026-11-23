@@ -1,4 +1,6 @@
 const assert = require("assert");
+const fs = require("fs");
+const path = require("path");
 const mongoose = require("mongoose");
 
 // Models & Middleware
@@ -31,6 +33,11 @@ const {
 
 const { getDashboard } = require("../src/controllers/dashboard.controller");
 const cacheUtils = require("../src/utils/cache");
+const TaskActivity = require("../src/models/TaskActivity");
+
+TaskActivity.create = async (doc) => doc;
+TaskActivity.insertMany = async (docs) => docs;
+TaskActivity.deleteMany = async () => ({ deletedCount: 0 });
 
 let totalTests = 0;
 let passedTests = 0;
@@ -85,23 +92,24 @@ async function runAllTests() {
 
   // 1. Schema Validation
   console.log("1. Project & Comment Schema Validations:");
-  test("Project model has optional projectHead field referencing User", () => {
-    const headPath = Project.schema.path("projectHead");
-    assert(headPath, "projectHead path must exist");
-    assert.strictEqual(headPath.instance.toLowerCase(), "objectid");
-    assert.strictEqual(headPath.options.ref, "User");
-    assert.strictEqual(headPath.defaultValue, null);
+  const migrationSql = fs.readFileSync(
+    path.join(__dirname, "../migrations/0001_initial_schema.sql"),
+    "utf8",
+  );
+
+  test("D1 projects table has an optional project head foreign key", () => {
+    assert.match(migrationSql, /project_head_id TEXT,/);
+    assert.match(
+      migrationSql,
+      /FOREIGN KEY\s*\(project_head_id\)\s*REFERENCES users\(id\)/,
+    );
   });
 
-  test("Comment model schema validates required fields", () => {
-    const contentPath = Comment.schema.path("content");
-    const taskPath = Comment.schema.path("task");
-    const projectPath = Comment.schema.path("project");
-    const userPath = Comment.schema.path("user");
-    assert(contentPath && contentPath.isRequired, "content required");
-    assert(taskPath && taskPath.isRequired, "task required");
-    assert(projectPath && projectPath.isRequired, "project required");
-    assert(userPath && userPath.isRequired, "user required");
+  test("D1 comments table requires content and all relationships", () => {
+    assert.match(migrationSql, /content TEXT NOT NULL/);
+    assert.match(migrationSql, /task_id TEXT NOT NULL/);
+    assert.match(migrationSql, /project_id TEXT NOT NULL/);
+    assert.match(migrationSql, /user_id TEXT NOT NULL/);
   });
 
   // 2. requireProjectOwner Middleware
@@ -489,7 +497,7 @@ async function runAllTests() {
       _id: taskId,
       project: projId,
       assignedTo: [{ toString: () => memberId }],
-      status: "todo",
+      status: "testing",
       save: async function () { return this; },
       populate: async function () { return this; },
     };

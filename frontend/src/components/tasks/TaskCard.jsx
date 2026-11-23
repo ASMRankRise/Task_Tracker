@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 import { AvatarGroup } from "../common/Avatar";
 import {
@@ -34,7 +35,6 @@ export function TaskCard({
     canDeleteTask,
   } = getTaskPermissions(task, project, effectiveUser);
 
-
   const assignedUsers = Array.isArray(task.assignedTo)
     ? task.assignedTo
     : task.assignedTo
@@ -44,12 +44,15 @@ export function TaskCard({
   const handleDelete = async (e) => {
     e.stopPropagation();
     if (!onDelete || deleting) return;
+
     const confirmed = window.confirm(
       `Are you sure you want to delete "${task.title}"?`,
     );
+
     if (!confirmed) return;
 
     setDeleting(true);
+
     try {
       await onDelete(task._id || task.id);
     } catch (error) {
@@ -59,33 +62,46 @@ export function TaskCard({
     }
   };
 
+  const formatDate = (date) =>
+    date
+      ? new Date(date).toLocaleString(undefined, {
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      })
+      : null;
+
+  const formattedDueDate = formatDate(task.dueDate);
+  const formattedScheduledDate = formatDate(task.scheduledStartAt);
+  const formattedStartedAt = formatDate(task.startedAt);
+  const formattedCompletedAt = formatDate(task.completedAt);
+
   const isOverdue =
     task.dueDate &&
     new Date(task.dueDate) < new Date() &&
     task.status !== "completed" &&
     task.status !== "done";
 
-  const formattedDueDate = task.dueDate
-    ? new Date(task.dueDate).toLocaleDateString(undefined, {
-      month: "short",
-      day: "numeric",
-    })
-    : null;
+  const formatDuration = (seconds = 0) => {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+
+    if (hours > 0) return `${hours}h ${minutes}m`;
+    return `${minutes}m`;
+  };
 
   return (
     <article
       onClick={() => {
-        if (canView && onClick) {
-          onClick(task);
-        }
+        if (canView && onClick) onClick(task);
       }}
       className={`group relative flex flex-col justify-between rounded-lg border border-border bg-surface p-3.5 shadow-subtle transition-colors ${canView
-        ? "hover:bg-surface-subtle/50 hover:border-brand/40 cursor-pointer"
-        : "opacity-85 cursor-default"
+          ? "hover:bg-surface-subtle/50 hover:border-brand/40 cursor-pointer"
+          : "opacity-85 cursor-default"
         } text-left`}
     >
       <div>
-        {/* Top Header: Inline Status & Priority Dropdowns + Delete Action */}
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-1.5 flex-wrap">
             <TaskStatusDropdown
@@ -96,6 +112,7 @@ export function TaskCard({
               }
               size="xs"
             />
+
             <TaskPriorityDropdown
               priority={task.priority}
               canEdit={canChangePriority}
@@ -119,45 +136,64 @@ export function TaskCard({
           )}
         </div>
 
-        {/* Task Title */}
         <h4 className="mt-2 text-sm font-semibold text-text-primary group-hover:text-brand transition-colors line-clamp-2 leading-snug">
           {task.title}
         </h4>
 
-        {/* Task Description */}
         {task.description && (
           <p className="mt-1 text-[13px] text-text-secondary line-clamp-2 leading-relaxed">
             {task.description}
           </p>
         )}
+
+        <div className="mt-3 space-y-1.5">
+          {formattedScheduledDate && (
+            <div className="flex items-center gap-1.5 text-[12px] text-text-secondary">
+              <CalendarIcon className="h-3 w-3 shrink-0" />
+              <span>Scheduled: {formattedScheduledDate}</span>
+            </div>
+          )}
+
+          {formattedDueDate && (
+            <div
+              className={`flex items-center gap-1.5 text-[12px] ${isOverdue ? "text-accent font-semibold" : "text-text-secondary"
+                }`}
+            >
+              <CalendarIcon className="h-3 w-3 shrink-0" />
+              <span>Due: {formattedDueDate}</span>
+              {isOverdue && <span>(Overdue)</span>}
+            </div>
+          )}
+
+          {formattedStartedAt && (
+            <p className="text-[12px] text-text-secondary">
+              Started: {formattedStartedAt}
+            </p>
+          )}
+
+          {formattedCompletedAt && (
+            <p className="text-[12px] text-text-secondary">
+              Completed: {formattedCompletedAt}
+            </p>
+          )}
+
+          {task.timeSpentSeconds > 0 && (
+            <p className="text-[12px] font-medium text-text-secondary">
+              Time spent: {formatDuration(task.timeSpentSeconds)}
+            </p>
+          )}
+        </div>
       </div>
 
-      {/* Bottom Footer Meta: Project Chip & Due Date stay on one line */}
       <div className="mt-3 border-t border-border-subtle pt-2.5">
         <div className="flex items-center justify-between gap-2">
-          {/* Project Name (with ellipsis) & Due Date on single line */}
-          <div className="flex items-center gap-2 min-w-0 flex-1">
-            <span
-              className="truncate rounded-md bg-surface-subtle px-2 py-0.5 text-[12px] font-medium text-text-secondary border border-border max-w-[125px]"
-              title={project?.name || task.project?.name}
-            >
-              {project?.name || task.project?.name || "Workspace"}
-            </span>
+          <span
+            className="truncate rounded-md bg-surface-subtle px-2 py-0.5 text-[12px] font-medium text-text-secondary border border-border max-w-[125px]"
+            title={project?.name || task.project?.name}
+          >
+            {project?.name || task.project?.name || "Workspace"}
+          </span>
 
-            {formattedDueDate && (
-              <span
-                className={`flex items-center gap-1 text-[12px] font-medium shrink-0 ${isOverdue
-                  ? "text-accent font-semibold"
-                  : "text-text-secondary"
-                  }`}
-              >
-                <CalendarIcon className="h-3 w-3" />
-                <span>{formattedDueDate}</span>
-              </span>
-            )}
-          </div>
-
-          {/* Assigned Members Avatars */}
           {assignedUsers.length > 0 && (
             <div className="shrink-0">
               <AvatarGroup users={assignedUsers} size="xs" max={2} />

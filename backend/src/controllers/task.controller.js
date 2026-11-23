@@ -3,14 +3,32 @@ const Task = require("../models/Task");
 const Project = require("../models/Project");
 const User = require("../models/User");
 const Comment = require("../models/Comment");
-const mongoose = require("mongoose");
+const { isValidId } = require("../db/d1");
 const crypto = require("crypto");
 const redis = require("../config/redis");
+const TaskActivity = require("../models/TaskActivity");
 const { sendTaskAssignmentEmail } = require("../config/mailer");
 const {
   TASK_CACHE_VERSION_KEY,
+  getShortId,
+  getTaskHistoryVersionKey,
+  getTaskHistoryCacheKey,
   invalidateTaskRelatedCaches,
+  invalidateTaskHistoryCache,
 } = require("../utils/cache");
+
+const formatValue = (val) => {
+  if (typeof val === "string" && val.length > 0) {
+    return val.charAt(0).toUpperCase() + val.slice(1);
+  }
+  return val;
+};
+
+const getTaskLabel = (task, fallbackId) => {
+  if (task?.title) return `"${task.title}"`;
+  const id = fallbackId || task?._id;
+  return id ? `#${getShortId(id)}` : "#unknown";
+};
 
 const validStatuses = ["todo", "in-progress", "completed", "testing", "done"];
 const validPriorities = ["low", "medium", "high"];
@@ -22,6 +40,7 @@ const createTask = async (req, res) => {
     const { userId, role } = req.user;
     const rawBody = req.body;
     const body = Array.isArray(rawBody) ? (rawBody[0] || {}) : (rawBody || {});
+
     const {
       title,
       description,
@@ -31,6 +50,7 @@ const createTask = async (req, res) => {
       assignedTo,
       assignToAll,
       dueDate,
+      scheduledStartAt,
     } = body;
 
     if (typeof title !== "string" || !title.trim()) {
@@ -55,7 +75,7 @@ const createTask = async (req, res) => {
       });
     }
 
-    if (!mongoose.isValidObjectId(projectId)) {
+    if (!isValidId(projectId)) {
       return res.status(400).json({
         message: "Valid project ID is required",
       });
@@ -100,6 +120,7 @@ const createTask = async (req, res) => {
     }
 
     let parsedDueDate = null;
+    let parsedScheduledStartAt = null;
 
     if (dueDate !== undefined && dueDate !== null && dueDate !== "") {
       parsedDueDate = new Date(dueDate);
@@ -107,6 +128,20 @@ const createTask = async (req, res) => {
       if (Number.isNaN(parsedDueDate.getTime())) {
         return res.status(400).json({
           message: "Invalid due date",
+        });
+      }
+    }
+
+    if (
+      scheduledStartAt !== undefined &&
+      scheduledStartAt !== null &&
+      scheduledStartAt !== ""
+    ) {
+      parsedScheduledStartAt = new Date(scheduledStartAt);
+
+      if (Number.isNaN(parsedScheduledStartAt.getTime())) {
+        return res.status(400).json({
+          message: "Invalid scheduled start date",
         });
       }
     }
@@ -166,6 +201,7 @@ const createTask = async (req, res) => {
       });
     }
 
+    const now = new Date();
     const task = await Task.create({
       title: title.trim(),
       description: typeof description === "string" ? description.trim() : "",
@@ -174,11 +210,25 @@ const createTask = async (req, res) => {
       project: foundProject._id,
       assignedTo: assignedUserIds,
       createdBy: userId,
-      assignedAt: assignedUserIds.length > 0 ? new Date() : null,
+      assignedAt: assignedUserIds.length > 0 ? now : null,
       submittedBy: null,
       submittedAt: null,
+      scheduledStartAt: parsedScheduledStartAt,
+      startedAt: taskStatus === "in-progress" ? now : null,
       dueDate: parsedDueDate,
     });
+    try {
+      await TaskActivity.create({
+        task: task._id,
+        user: userId,
+        action: "created",
+        field: "task",
+        oldValue: null,
+        newValue: task.title,
+      });
+    } catch (error) {
+      console.error(`[Task] Activity log failed for ${getTaskLabel(task)}:`, error.message || error);
+    }
 
     await task.populate([
       { path: "project", select: "name owner projectHead" },
@@ -187,41 +237,38 @@ const createTask = async (req, res) => {
       { path: "submittedBy", select: "name email" },
     ]);
 
-    const emailResults = await Promise.allSettled(
-      task.assignedTo
-        .filter((member) => member.email)
-        .map((member) =>
-          sendTaskAssignmentEmail({
-            to: member.email,
-            task,
-            projectName: task.project.name,
-            assignedBy: task.createdBy.name,
-          }),
-        ),
-    );
+    if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+      Promise.allSettled(
+        task.assignedTo
+          .filter((member) => member.email)
+          .map((member) =>
+            sendTaskAssignmentEmail({
+              to: member.email,
+              task,
+              projectName: task.project.name,
+              assignedBy: task.createdBy.name,
+            }),
+          ),
+      ).catch((err) => {
+        console.warn("[Task] Email notification error:", err.message || err);
+      });
+    }
 
-    emailResults.forEach((result) => {
-      if (result.status === "rejected") {
-        console.error(
-          "Task assignment email failed:",
-          result.reason.message,
-        );
-      }
-    });
-
-    await invalidateTaskRelatedCaches();
+    await invalidateTaskRelatedCaches(task._id, task.title);
+    console.log(`[Task] Task created — ${getTaskLabel(task)} (#${getShortId(task._id)})`);
 
     return res.status(201).json({
       message: "Task created successfully",
       task,
     });
   } catch (error) {
-    console.error("Create task error:", error);
+    console.error("[Task] Create task error:", error.message || error);
     return res.status(500).json({
       message: "Failed to create task",
     });
   }
 };
+
 
 
 // GET TASKS
@@ -252,13 +299,13 @@ const getTasks = async (req, res) => {
       });
     }
 
-    if (assignedTo && !mongoose.isValidObjectId(assignedTo)) {
+    if (assignedTo && !isValidId(assignedTo)) {
       return res.status(400).json({
         message: "Invalid assigned user ID",
       });
     }
 
-    if (project && !mongoose.isValidObjectId(project)) {
+    if (project && !isValidId(project)) {
       return res.status(400).json({
         message: "Invalid project ID",
       });
@@ -360,13 +407,13 @@ const getTasks = async (req, res) => {
       const cachedTasks = await redis.get(cacheKey);
 
       if (cachedTasks !== null) {
-        console.log("Tasks fetched from Redis");
+        console.log("[Redis] Tasks list cache HIT");
         return res.status(200).json(cachedTasks);
       }
 
-      console.log("Tasks Redis cache miss");
+      console.log("[Redis] Tasks list cache MISS");
     } catch (error) {
-      console.error("Tasks Redis cache read error:", error);
+      console.error("[Redis] Tasks list cache read error:", error.message || error);
       cacheKey = null;
     }
 
@@ -393,8 +440,6 @@ const getTasks = async (req, res) => {
         .limit(limitNumber),
       Task.countDocuments(filter),
     ]);
-
-    console.log("Tasks fetched from MongoDB");
 
     const tasks = rawTasks.map((t) => {
       const taskObj = t.toObject();
@@ -490,16 +535,16 @@ const getTasks = async (req, res) => {
             ex: 60,
           });
 
-          console.log("Tasks saved to Redis cache");
+          console.log("[Redis] Tasks list cached successfully — TTL: 60s");
         }
       } catch (error) {
-        console.error("Tasks Redis cache write error:", error);
+        console.error("[Redis] Tasks list cache write error:", error.message || error);
       }
     }
 
     return res.status(200).json(responseData);
   } catch (error) {
-    console.error("Get tasks error:", error);
+    console.error("[Task] Get tasks error:", error.message || error);
     return res.status(500).json({
       message: "Failed to fetch tasks",
     });
@@ -512,7 +557,7 @@ const getTaskById = async (req, res) => {
     const { userId, role } = req.user;
     const { taskId } = req.params;
 
-    if (!mongoose.isValidObjectId(taskId)) {
+    if (!isValidId(taskId)) {
       return res.status(400).json({
         message: "Invalid task ID",
       });
@@ -560,7 +605,9 @@ const getTaskById = async (req, res) => {
 
     const isMember =
       Array.isArray(project.members) &&
-      project.members.some((m) => m.toString() === userId.toString());
+      project.members.some(
+        (m) => (m._id || m.id || m).toString() === userId.toString(),
+      );
 
     if (!isOwner && !isHead && !isAssigned) {
       if (isMember) {
@@ -616,20 +663,147 @@ const getTaskById = async (req, res) => {
       task: sanitizedTask,
     });
   } catch (error) {
-    console.error("Get task by ID error:", error);
+    console.error(`[Task] Get task by ID error (#${getShortId(req.params.taskId)}):`, error.message || error);
     return res.status(500).json({
       message: "Failed to fetch task details",
     });
   }
 };
 
+
+const getTaskHistory = async (req, res) => {
+  try {
+    const { userId, role } = req.user;
+    const { taskId } = req.params;
+
+    if (!isValidId(taskId)) {
+      return res.status(400).json({ message: "Invalid task ID" });
+    }
+
+    const task = await Task.findById(taskId).populate(
+      "project",
+      "owner projectHead members"
+    );
+
+    if (!task) {
+      return res.status(404).json({ message: "Task not found" });
+    }
+
+    if (role !== "superadmin") {
+      const project = task.project;
+
+      if (!project) {
+        return res.status(404).json({
+          message: "Associated project not found",
+        });
+      }
+
+      const isOwner = project.owner?.toString() === userId.toString();
+      const isHead = project.projectHead?.toString() === userId.toString();
+      const isAssigned =
+        Array.isArray(task.assignedTo) &&
+        task.assignedTo.some(
+          (user) => (user._id || user).toString() === userId.toString()
+        );
+
+      if (!isOwner && !isHead && !isAssigned) {
+        return res.status(403).json({
+          message: "You do not have permission to view this task history",
+        });
+      }
+    }
+
+    let cacheKey = null;
+    let cacheVersion = null;
+    const taskLabel = getTaskLabel(task, taskId);
+
+    try {
+      const versionKey = getTaskHistoryVersionKey(taskId);
+      const rawVersion = await redis.get(versionKey);
+      cacheVersion =
+        rawVersion !== null && rawVersion !== undefined
+          ? Number(rawVersion) || 0
+          : 0;
+      cacheKey = getTaskHistoryCacheKey(taskId, cacheVersion);
+
+      const cachedHistory = await redis.get(cacheKey);
+
+      if (cachedHistory !== null) {
+        console.log(`[Redis] Task history cache HIT — Task: ${taskLabel}`);
+        const responseData =
+          typeof cachedHistory === "string"
+            ? JSON.parse(cachedHistory)
+            : cachedHistory;
+        return res.status(200).json(responseData);
+      }
+
+      console.log(`[Redis] Task history cache MISS — Task: ${taskLabel}`);
+    } catch (error) {
+      console.error(
+        `[Redis] Task history cache read error — Task: ${taskLabel}:`,
+        error.message || error
+      );
+      cacheKey = null;
+    }
+
+    const activities = await TaskActivity.find({ task: taskId })
+      .populate("user", "name email")
+      .sort({ createdAt: -1 });
+
+    const responseData = { activities };
+
+    if (cacheKey) {
+      try {
+        const versionKey = getTaskHistoryVersionKey(taskId);
+        const rawLatestVersion = await redis.get(versionKey);
+        const latestVersion =
+          rawLatestVersion !== null && rawLatestVersion !== undefined
+            ? Number(rawLatestVersion) || 0
+            : 0;
+
+        if (latestVersion === cacheVersion) {
+          const saveResult = await redis.set(cacheKey, responseData, {
+            ex: 60,
+          });
+          if (saveResult === "OK") {
+            console.log("[Redis] Task history cached successfully — TTL: 60s");
+          } else {
+            console.warn(
+              `[Redis] Task history cache save failed — Task: ${taskLabel} (${saveResult})`
+            );
+          }
+        } else {
+          console.log(
+            `[Redis] Task history cache version conflict (${cacheVersion} -> ${latestVersion}) — Task: ${taskLabel}, skipping write`
+          );
+        }
+      } catch (error) {
+        console.error(
+          `[Redis] Task history cache write error — Task: ${taskLabel}:`,
+          error.message || error
+        );
+      }
+    }
+
+    return res.status(200).json(responseData);
+  } catch (error) {
+    console.error(`[Task] Get task history error (#${getShortId(req.params?.taskId)}):`, error.message || error);
+    return res.status(500).json({
+      message: "Failed to fetch task history",
+    });
+  }
+};
+
+
 // UPDATE TASK
+
+
 const updateTask = async (req, res) => {
   try {
     const { userId, role } = req.user;
     const { taskId } = req.params;
 
-    if (!mongoose.isValidObjectId(taskId)) {
+    if (!isValidId(taskId)) {
       return res.status(400).json({
         message: "Invalid task ID",
       });
@@ -643,6 +817,21 @@ const updateTask = async (req, res) => {
       });
     }
 
+    const previousStatus = task.status;
+    const previousPriority = task.priority;
+
+    const previousDueDate = task.dueDate
+      ? new Date(task.dueDate).toISOString()
+      : null;
+
+    const previousScheduledStartAt = task.scheduledStartAt
+      ? new Date(task.scheduledStartAt).toISOString()
+      : null;
+
+    const previousAssignedIds = (task.assignedTo || [])
+      .map((user) => (user._id || user).toString())
+      .sort();
+
     const project = await Project.findById(task.project);
 
     if (!project) {
@@ -652,15 +841,10 @@ const updateTask = async (req, res) => {
     }
 
     const isSuperAdmin = role === "superadmin";
-
-    const isProjectOwner = Boolean(
-      project.owner && project.owner.toString() === userId.toString(),
-    );
-
-    const isProjectHead = Boolean(
-      project.projectHead &&
-      project.projectHead.toString() === userId.toString(),
-    );
+    const isProjectOwner =
+      project.owner?.toString() === userId.toString();
+    const isProjectHead =
+      project.projectHead?.toString() === userId.toString();
 
     const isAssignedUser =
       Array.isArray(task.assignedTo) &&
@@ -668,10 +852,102 @@ const updateTask = async (req, res) => {
         (id) => (id._id || id).toString() === userId.toString(),
       );
 
-    if (isSuperAdmin || isProjectOwner || isProjectHead) {
-      const { title, description, status, priority, dueDate, assignedTo } =
-        req.body;
+    const canManage =
+      isSuperAdmin || isProjectOwner || isProjectHead;
 
+    const {
+      title,
+      description,
+      status,
+      priority,
+      dueDate,
+      scheduledStartAt,
+      assignedTo,
+    } = req.body;
+
+    if (!canManage && !isAssignedUser) {
+      return res.status(403).json({
+        message: "You can only update tasks assigned to you",
+      });
+    }
+
+    if (!canManage) {
+      const keys = Object.keys(req.body);
+
+      if (keys.length !== 1 || keys[0] !== "status") {
+        return res.status(403).json({
+          message: "Members can only update task status",
+        });
+      }
+    }
+
+    if (status !== undefined) {
+      if (!validStatuses.includes(status)) {
+        return res.status(400).json({
+          message: "Invalid status",
+          allowed: validStatuses,
+        });
+      }
+
+      if (status !== task.status) {
+        const statusOrder = [
+          "todo",
+          "in-progress",
+          "testing",
+          "completed",
+          "done",
+        ];
+
+        const currentIndex = statusOrder.indexOf(task.status);
+        const nextIndex = statusOrder.indexOf(status);
+
+        if (currentIndex === -1 || currentIndex === 4) {
+          return res.status(400).json({
+            message: "This task status cannot be changed",
+          });
+        }
+
+        if (nextIndex !== currentIndex + 1) {
+          return res.status(400).json({
+            message: "Task must follow the correct status sequence",
+            currentStatus: task.status,
+            allowedNextStatus: statusOrder[currentIndex + 1] || null,
+          });
+        }
+
+        const now = new Date();
+
+        if (status === "in-progress" && !task.startedAt) {
+          task.startedAt = now;
+        }
+
+        if (status === "completed") {
+          task.completedAt = now;
+
+          task.timeSpentSeconds = task.startedAt
+            ? Math.max(
+              0,
+              Math.floor(
+                (now.getTime() - task.startedAt.getTime()) / 1000,
+              ),
+            )
+            : 0;
+
+          if (!canManage) {
+            task.submittedBy = userId;
+            task.submittedAt = now;
+          }
+        }
+
+        if (status === "done") {
+          task.doneAt = now;
+        }
+
+        task.status = status;
+      }
+    }
+
+    if (canManage) {
       if (title !== undefined) {
         if (typeof title !== "string" || !title.trim()) {
           return res.status(400).json({
@@ -704,22 +980,6 @@ const updateTask = async (req, res) => {
         task.description = description.trim();
       }
 
-      if (status !== undefined) {
-        if (!validStatuses.includes(status)) {
-          return res.status(400).json({
-            message: "Invalid status",
-            allowed: validStatuses,
-          });
-        }
-
-        if (status !== "completed" && task.status === "completed") {
-          task.submittedBy = null;
-          task.submittedAt = null;
-        }
-
-        task.status = status;
-      }
-
       if (priority !== undefined) {
         if (!validPriorities.includes(priority)) {
           return res.status(400).json({
@@ -744,6 +1004,22 @@ const updateTask = async (req, res) => {
           }
 
           task.dueDate = parsedDueDate;
+        }
+      }
+
+      if (scheduledStartAt !== undefined) {
+        if (scheduledStartAt === null || scheduledStartAt === "") {
+          task.scheduledStartAt = null;
+        } else {
+          const parsedScheduledStartAt = new Date(scheduledStartAt);
+
+          if (Number.isNaN(parsedScheduledStartAt.getTime())) {
+            return res.status(400).json({
+              message: "Invalid scheduled start date",
+            });
+          }
+
+          task.scheduledStartAt = parsedScheduledStartAt;
         }
       }
 
@@ -797,7 +1073,9 @@ const updateTask = async (req, res) => {
         }
 
         const newAssignedIds = users.map((user) => user._id.toString());
-        const currentAssignedIds = task.assignedTo.map((id) => id.toString());
+        const currentAssignedIds = task.assignedTo.map((id) =>
+          id.toString(),
+        );
 
         const assignmentChanged =
           newAssignedIds.length !== currentAssignedIds.length ||
@@ -809,41 +1087,95 @@ const updateTask = async (req, res) => {
 
         task.assignedTo = users.map((user) => user._id);
       }
-    } else if (isAssignedUser) {
-      const keys = Object.keys(req.body);
-
-      const isOnlyStatus = keys.length === 1 && keys[0] === "status";
-
-      if (!isOnlyStatus) {
-        return res.status(403).json({
-          message: "Members can only update task status",
-        });
-      }
-
-      if (!validStatuses.includes(req.body.status)) {
-        return res.status(400).json({
-          message: "Invalid status",
-          allowed: validStatuses,
-        });
-      }
-
-      task.status = req.body.status;
-
-      if (req.body.status === "completed") {
-        task.submittedBy = userId;
-        task.submittedAt = new Date();
-      } else {
-        task.submittedBy = null;
-        task.submittedAt = null;
-      }
-    } else {
-      return res.status(403).json({
-        message: "You can only update tasks assigned to you",
-      });
     }
 
     await task.save();
-    await invalidateTaskRelatedCaches();
+    const activities = [];
+    const taskLabel = getTaskLabel(task, task._id);
+
+    if (previousStatus !== task.status) {
+      console.log(`[Task] Status updated — ${taskLabel}: ${formatValue(previousStatus)} → ${formatValue(task.status)}`);
+      activities.push({
+        task: task._id,
+        user: userId,
+        action: "status_changed",
+        field: "status",
+        oldValue: previousStatus,
+        newValue: task.status,
+      });
+    }
+
+    if (previousPriority !== task.priority) {
+      console.log(`[Task] Priority updated — ${taskLabel}: ${formatValue(previousPriority)} → ${formatValue(task.priority)}`);
+      activities.push({
+        task: task._id,
+        user: userId,
+        action: "priority_changed",
+        field: "priority",
+        oldValue: previousPriority,
+        newValue: task.priority,
+      });
+    }
+
+    const currentDueDate = task.dueDate
+      ? new Date(task.dueDate).toISOString()
+      : null;
+
+    if (previousDueDate !== currentDueDate) {
+      console.log(`[Task] Due date updated — ${taskLabel}`);
+      activities.push({
+        task: task._id,
+        user: userId,
+        action: "due_date_changed",
+        field: "dueDate",
+        oldValue: previousDueDate,
+        newValue: currentDueDate,
+      });
+    }
+
+    const currentScheduledStartAt = task.scheduledStartAt
+      ? new Date(task.scheduledStartAt).toISOString()
+      : null;
+
+    if (previousScheduledStartAt !== currentScheduledStartAt) {
+      console.log(`[Task] Schedule updated — ${taskLabel}`);
+      activities.push({
+        task: task._id,
+        user: userId,
+        action: "schedule_changed",
+        field: "scheduledStartAt",
+        oldValue: previousScheduledStartAt,
+        newValue: currentScheduledStartAt,
+      });
+    }
+
+    const currentAssignedIds = (task.assignedTo || [])
+      .map((user) => (user._id || user).toString())
+      .sort();
+
+    if (
+      JSON.stringify(previousAssignedIds) !==
+      JSON.stringify(currentAssignedIds)
+    ) {
+      console.log(`[Task] Assignees updated — ${taskLabel}`);
+      activities.push({
+        task: task._id,
+        user: userId,
+        action: "assigned",
+        field: "assignedTo",
+        oldValue: previousAssignedIds,
+        newValue: currentAssignedIds,
+      });
+    }
+
+    if (activities.length) {
+      try {
+        await TaskActivity.insertMany(activities);
+      } catch (error) {
+        console.error(`[Task] Activity log failed for ${taskLabel}:`, error.message || error);
+      }
+    }
+    await invalidateTaskRelatedCaches(task._id, task.title);
 
     await task.populate([
       { path: "project", select: "name owner projectHead" },
@@ -857,19 +1189,22 @@ const updateTask = async (req, res) => {
       task,
     });
   } catch (error) {
-    console.error("Update task error:", error);
+    console.error(`[Task] Update task error (#${getShortId(req.params?.taskId)}):`, error.message || error);
+
     return res.status(500).json({
       message: "Failed to update task",
     });
   }
 };
 
+
+
 // DELETE TASK
 const deleteTask = async (req, res) => {
   try {
     const { taskId } = req.params;
 
-    if (!mongoose.isValidObjectId(taskId)) {
+    if (!isValidId(taskId)) {
       return res.status(400).json({
         message: "Invalid task ID",
       });
@@ -906,18 +1241,25 @@ const deleteTask = async (req, res) => {
       });
     }
 
+    const taskLabel = getTaskLabel(task, task._id);
+
     await Comment.deleteMany({
       task: task._id,
     });
 
+    await TaskActivity.deleteMany({
+      task: task._id,
+    });
+
     await task.deleteOne();
-    await invalidateTaskRelatedCaches();
+    await invalidateTaskRelatedCaches(task._id, task.title);
+    console.log(`[Task] Task deleted — ${taskLabel}`);
 
     return res.status(200).json({
       message: "Task deleted successfully",
     });
   } catch (error) {
-    console.error("Delete task error:", error);
+    console.error(`[Task] Delete task error (#${getShortId(req.params?.taskId)}):`, error.message || error);
     return res.status(500).json({
       message: "Failed to delete task",
     });
@@ -931,7 +1273,7 @@ const createComment = async (req, res) => {
     const { taskId } = req.params;
     const { content } = req.body;
 
-    if (!mongoose.isValidObjectId(taskId)) {
+    if (!isValidId(taskId)) {
       return res.status(400).json({
         message: "Invalid task ID",
       });
@@ -989,14 +1331,15 @@ const createComment = async (req, res) => {
     });
 
     await comment.populate("user", "name email");
-    await invalidateTaskRelatedCaches();
+    await invalidateTaskRelatedCaches(task._id, task.title);
+    console.log(`[Task] Comment added — ${getTaskLabel(task, task._id)}`);
 
     return res.status(201).json({
       message: "Comment added successfully",
       comment,
     });
   } catch (error) {
-    console.error("Create comment error:", error);
+    console.error(`[Task] Create comment error (#${getShortId(req.params?.taskId)}):`, error.message || error);
     return res.status(500).json({
       message: "Failed to add comment",
     });
@@ -1009,7 +1352,7 @@ const getComments = async (req, res) => {
     const { userId, role } = req.user;
     const { taskId } = req.params;
 
-    if (!mongoose.isValidObjectId(taskId)) {
+    if (!isValidId(taskId)) {
       return res.status(400).json({
         message: "Invalid task ID",
       });
@@ -1064,7 +1407,7 @@ const getComments = async (req, res) => {
       comments,
     });
   } catch (error) {
-    console.error("Get comments error:", error);
+    console.error(`[Task] Get comments error (#${getShortId(req.params?.taskId)}):`, error.message || error);
     return res.status(500).json({
       message: "Failed to fetch comments",
     });
@@ -1075,6 +1418,7 @@ module.exports = {
   createTask,
   getTasks,
   getTaskById,
+  getTaskHistory,
   updateTask,
   deleteTask,
   createComment,

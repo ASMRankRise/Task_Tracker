@@ -1,37 +1,34 @@
 require("dotenv").config();
-
-const mongoose = require("mongoose");
-const User = require("../src/models/User");
+const { spawnSync } = require("child_process");
 
 async function setAdmin() {
-  try {
-    const email = process.argv[2]?.trim().toLowerCase();
+  const email = process.argv[2]?.trim().toLowerCase();
+  const isRemote = process.argv.includes("--remote") || !process.argv.includes("--local");
+  const targetFlag = isRemote ? "--remote" : "--local";
 
-    if (!email) {
-      console.log("Please provide a registered email.");
-      process.exitCode = 1;
-      return;
-    }
-
-    await mongoose.connect(process.env.MONGODB_URI);
-    const user = await User.findOne({ email });
-
-    if (!user) {
-      console.log("User not found. Register this email first.");
-      process.exitCode = 1;
-      return;
-    }
-
-    user.role = "admin";
-    await user.save();
-
-    console.log(`${user.email} is now an Admin.`);
-  } catch (error) {
-    console.error("Error:", error.message);
+  if (!email || email.startsWith("--")) {
+    console.log("Usage: node scripts/setAdmin.js <email> [--remote | --local]");
     process.exitCode = 1;
-  } finally {
-    await mongoose.disconnect();
+    return;
+  }
+
+  const safeEmail = email.replace(/'/g, "''");
+  const sql = `UPDATE users SET role = 'admin', token_version = token_version + 1, updated_at = datetime('now') WHERE email = '${safeEmail}' COLLATE NOCASE;`;
+
+  console.log(`Setting Admin for '${email}' (${targetFlag})...`);
+  const wranglerCmd = process.platform === "win32" ? "npx.cmd" : "npx";
+  const result = spawnSync(
+    wranglerCmd,
+    ["wrangler", "d1", "execute", "taskmanagementsys", targetFlag, "--command", sql],
+    { stdio: "inherit", shell: true },
+  );
+
+  if (result.status !== 0) {
+    process.exitCode = result.status || 1;
+  } else {
+    console.log(`Success: Role updated to admin in D1.`);
   }
 }
 
 setAdmin();
+

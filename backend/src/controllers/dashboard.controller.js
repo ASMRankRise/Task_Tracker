@@ -26,7 +26,7 @@ const getDashboard = async (req, res) => {
     try {
       version = Number(await redis.get(DASHBOARD_CACHE_VERSION_KEY)) || 0;
     } catch (error) {
-      console.error("Redis version error:", error);
+      console.error("[Redis] Dashboard version error:", error.message || error);
     }
 
     const cacheKey = `dashboard:v${version}:user:${userId}:role:${currentUser.role}`;
@@ -35,13 +35,13 @@ const getDashboard = async (req, res) => {
       const cachedDashboard = await redis.get(cacheKey);
 
       if (cachedDashboard !== null) {
-        console.log("Dashboard fetched from Redis");
+        console.log("[Redis] Dashboard cache HIT");
         return res.status(200).json(cachedDashboard);
       }
 
-      console.log("Dashboard Redis cache miss");
+      console.log("[Redis] Dashboard cache MISS");
     } catch (error) {
-      console.error("Redis read error:", error);
+      console.error("[Redis] Dashboard cache read error:", error.message || error);
     }
 
     // Set filters: only Super Admin gets global project/task counts.
@@ -148,7 +148,6 @@ const getDashboard = async (req, res) => {
         byPriority,
       },
     };
-    console.log("Dashboard fetched from MongoDB");
 
     try {
       const latestVersion = Number(
@@ -159,15 +158,15 @@ const getDashboard = async (req, res) => {
         await redis.set(cacheKey, responseData, {
           ex: 60,
         });
-        console.log("Dashboard saved to Redis cache");
+        console.log("[Redis] Dashboard cached successfully — TTL: 60s");
       }
     } catch (error) {
-      console.error("Redis write error:", error);
+      console.error("[Redis] Dashboard cache write error:", error.message || error);
     }
 
     return res.status(200).json(responseData);
   } catch (error) {
-    console.error("Get dashboard error:", error);
+    console.error("[Dashboard] Get dashboard error:", error.message || error);
 
     return res.status(500).json({
       message: "Failed to fetch dashboard data",

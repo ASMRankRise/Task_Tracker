@@ -27,17 +27,7 @@ export function AuthProvider({ children }) {
 
     authRequestRef.current = (async () => {
       try {
-        let response;
-
-        try {
-          response = await api.get("/auth/me");
-        } catch (error) {
-          if (error.response?.status !== 401) throw error;
-
-          await api.post("/auth/refresh");
-          response = await api.get("/auth/me");
-        }
-
+        const response = await api.get("/auth/me");
         setUser(response.data.user);
         return response.data.user || null;
       } catch (error) {

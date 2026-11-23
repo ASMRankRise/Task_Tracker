@@ -17,7 +17,12 @@ const Task = require("../src/models/Task");
 const Project = require("../src/models/Project");
 const User = require("../src/models/User");
 const Comment = require("../src/models/Comment");
+const TaskActivity = require("../src/models/TaskActivity");
 const cacheUtils = require("../src/utils/cache");
+
+TaskActivity.create = async (doc) => doc;
+TaskActivity.insertMany = async (docs) => docs;
+TaskActivity.deleteMany = async () => ({ deletedCount: 0 });
 
 let totalTests = 0;
 let passedTests = 0;
@@ -143,13 +148,13 @@ async function runTests() {
     const req = {
       params: { taskId: taskIdA },
       user: { userId: superAdminId, role: "superadmin" },
-      body: { priority: "high", status: "completed" },
+      body: { priority: "high", status: "in-progress" },
     };
     const res = createMockRes();
     await updateTask(req, res);
     assert.strictEqual(res.statusCode, 200);
     assert.strictEqual(task.priority, "high");
-    assert.strictEqual(task.status, "completed");
+    assert.strictEqual(task.status, "in-progress");
   });
 
   // 2. Project Owner changes task Priority and Status
@@ -171,7 +176,7 @@ async function runTests() {
 
   // 3. Project Head changes task Priority and Status in their assigned project
   await test("3. Project Head can update both task Priority and Status in assigned project", async () => {
-    const task = createMockTask(taskIdA, projectIdA, "low", "todo");
+    const task = createMockTask(taskIdA, projectIdA, "low", "in-progress");
     Task.findById = async () => task;
 
     const req = {
@@ -297,7 +302,7 @@ async function runTests() {
 
   // 10. Redis cache is invalidated after successful updates
   await test("10. Redis cache invalidation triggers after successful task update", async () => {
-    const task = createMockTask(taskIdA, projectIdA, "low", "todo");
+    const task = createMockTask(taskIdA, projectIdA, "low", "completed");
     Task.findById = async () => task;
 
     let invalidated = false;

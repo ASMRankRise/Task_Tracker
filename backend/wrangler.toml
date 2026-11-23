@@ -1,0 +1,16 @@
+name = "task-management-api"
+main = "src/worker.mjs"
+compatibility_date = "2026-11-21"
+compatibility_flags = ["nodejs_compat"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "taskmanagementsys"
+database_id = "cc0166bb-3ef6-4c48-89f7-233634742b09"
+migrations_dir = "migrations"
+remote = true
+
+[vars]
+NODE_ENV = "production"
+
+

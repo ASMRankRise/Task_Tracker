@@ -1,6 +1,7 @@
 const assert = require("assert");
+const fs = require("fs");
+const path = require("path");
 const requireRole = require("../src/middleware/role");
-const User = require("../src/models/User");
 const requireProjectOwner = require("../src/middleware/project.middleware");
 const { updateUserRole } = require("../src/controllers/admin.controller");
 const { register } = require("../src/controllers/auth.controller");
@@ -53,35 +54,28 @@ const createMockRes = () => {
   return res;
 };
 
-// 1. User Model Schema Validation
-console.log("1. User Model Schema Validation:");
+// 1. D1 User Schema Validation
+console.log("1. D1 User Schema Validation:");
 
-test("User model schema defines enum ['user', 'admin', 'superadmin'] with default 'user'", () => {
-  const rolePath = User.schema.path("role");
-  assert.deepStrictEqual(rolePath.enumValues, ["user", "admin", "superadmin"]);
-  assert.strictEqual(rolePath.defaultValue, "user");
+const migrationSql = fs.readFileSync(
+  path.join(__dirname, "../migrations/0001_initial_schema.sql"),
+  "utf8",
+);
+
+test("D1 users table defines the role enum and default user role", () => {
+  assert.match(migrationSql, /role TEXT NOT NULL DEFAULT 'user'/);
+  assert.match(
+    migrationSql,
+    /CHECK\s*\(\s*role IN\s*\(\s*'user',\s*'admin',\s*'superadmin'\s*\)\s*\)/,
+  );
 });
 
-test("User model rejects invalid role value", () => {
-  const invalidUser = new User({
-    name: "Tester",
-    email: "test@example.com",
-    password: "hashedPassword123",
-    role: "godmode",
-  });
-  const err = invalidUser.validateSync();
-  assert(err && err.errors["role"]);
+test("D1 users table excludes invalid role values", () => {
+  assert(!/role IN\s*\([^)]*'godmode'/.test(migrationSql));
 });
 
-test("User model accepts superadmin role", () => {
-  const validUser = new User({
-    name: "Super Boss",
-    email: "super@example.com",
-    password: "hashedPassword123",
-    role: "superadmin",
-  });
-  const err = validUser.validateSync();
-  assert(!err || !err.errors["role"]);
+test("D1 users table accepts the superadmin role", () => {
+  assert.match(migrationSql, /'superadmin'/);
 });
 
 // 2. Role Middleware Hierarchy Tests
@@ -286,4 +280,3 @@ setTimeout(() => {
     process.exit(1);
   }
 }, 500);
-

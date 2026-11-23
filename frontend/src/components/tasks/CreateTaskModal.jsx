@@ -60,7 +60,7 @@ export function CreateTaskModal({
   const [submitting, setSubmitting] = useState(false);
 
   const currentUserId = getEntityId(effectiveUser);
-  const isAdmin = ["admin", "superadmin"].includes(effectiveUser?.role);
+  const isSuperAdmin = effectiveUser?.role === "superadmin";
 
   useEffect(() => {
     if (isOpen && !wasOpenRef.current) {
@@ -140,11 +140,11 @@ export function CreateTaskModal({
     const isProjectHead =
       currentUserId !== "" &&
       headId === currentUserId &&
-      !isAdmin &&
+      !isSuperAdmin &&
       !isOwner;
 
     const canCreate = Boolean(
-      selectedProject && (isAdmin || isOwner || isProjectHead),
+      selectedProject && (isSuperAdmin || isOwner || isProjectHead),
     );
 
     const projectMembers = [

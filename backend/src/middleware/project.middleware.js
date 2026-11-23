@@ -1,11 +1,11 @@
-const mongoose = require("mongoose");
+const { isValidId } = require("../db/d1");
 const Project = require("../models/Project");
 
 const requireProjectOwner = async (req, res, next) => {
   try {
     const { projectId } = req.params;
 
-    if (!mongoose.isValidObjectId(projectId)) {
+    if (!isValidId(projectId)) {
       return res.status(400).json({
         message: "Invalid project ID",
       });
