@@ -533,7 +533,12 @@ export function ProjectWorkspace({
                           {t.dueDate ? (
                             <span className="flex items-center gap-1.5">
                               <CalendarIcon className="w-3.5 h-3.5 text-text-tertiary" />
-                              {new Date(t.dueDate).toLocaleDateString()}
+                              {new Date(t.dueDate).toLocaleString(undefined, {
+                                month: "short",
+                                day: "numeric",
+                                hour: "numeric",
+                                minute: "2-digit",
+                              })}
                             </span>
                           ) : (
                             <span className="text-text-tertiary">No deadline</span>

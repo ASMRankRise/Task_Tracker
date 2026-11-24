@@ -11,6 +11,7 @@ import AdminDashboard from "./components/AdminDashboard";
 import UserDashboard from "./components/UserDashboard";
 import ProjectsPage from "./components/pages/ProjectsPage";
 import TasksPage from "./components/pages/TasksPage";
+import ReportsPage from "./components/pages/ReportsPage";
 import ManageUsers from "./components/admin/ManageUsers";
 
 function App() {
@@ -86,6 +87,17 @@ function App() {
           <ProtectedRoute>
             <DashboardLayout>
               <TasksPage user={user} />
+            </DashboardLayout>
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/reports"
+        element={
+          <ProtectedRoute>
+            <DashboardLayout>
+              <ReportsPage user={user} />
             </DashboardLayout>
           </ProtectedRoute>
         }
