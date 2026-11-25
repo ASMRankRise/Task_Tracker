@@ -2,20 +2,22 @@ import { StatusBadge, PriorityBadge } from "../common/Badge";
 import { CalendarIcon, AlertTriangleIcon, CheckCircleIcon } from "../common/Icons";
 
 export function UpcomingDeadlines({ tasks = [], onTaskClick }) {
-  // Filter active tasks that have a dueDate
+  // Filter active tasks that have a valid dueDate
   const activeTasksWithDueDate = tasks
     .filter(
       (t) =>
         t.dueDate &&
+        !isNaN(new Date(t.dueDate).getTime()) &&
         t.status !== "completed" &&
         t.status !== "done"
     )
-    .sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate));
+    .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
 
   const topDeadlines = activeTasksWithDueDate.slice(0, 6);
 
   const getDaysDiff = (dateStr) => {
     const due = new Date(dateStr);
+    if (isNaN(due.getTime())) return 0;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     due.setHours(0, 0, 0, 0);

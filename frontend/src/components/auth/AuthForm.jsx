@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
+import api from "../../services/api";
 import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../context/ThemeContext";
 import {
@@ -11,7 +12,7 @@ import {
 } from "../common/Icons";
 
 export function AuthForm({ mode = "login" }) {
-  const isLogin = mode === "login";
+  const isForgotPassword = mode === "forgot-password";
   const navigate = useNavigate();
   const { theme, toggleTheme } = useTheme();
 
@@ -26,6 +27,7 @@ export function AuthForm({ mode = "login" }) {
   } = useAuth();
 
   const [showPassword, setShowPassword] = useState(false);
+  const [submittingForgot, setSubmittingForgot] = useState(false);
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -52,20 +54,18 @@ export function AuthForm({ mode = "login" }) {
     const errors = {};
     const emailTrimmed = formData.email.trim();
 
-    if (!isLogin && !formData.name.trim()) {
-      errors.name = "Full name is required.";
-    }
-
     if (!emailTrimmed) {
       errors.email = "Email address is required.";
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailTrimmed)) {
       errors.email = "Please enter a valid work email address.";
     }
 
-    if (!formData.password) {
-      errors.password = "Password is required.";
-    } else if (formData.password.length < 6) {
-      errors.password = "Password must be at least 6 characters.";
+    if (!isForgotPassword) {
+      if (!formData.password) {
+        errors.password = "Password is required.";
+      } else if (formData.password.length < 6) {
+        errors.password = "Password must be at least 6 characters.";
+      }
     }
 
     setClientErrors(errors);
@@ -79,26 +79,43 @@ export function AuthForm({ mode = "login" }) {
 
     if (!validateForm()) return;
 
-    const name = formData.name.trim();
     const email = formData.email.trim().toLowerCase();
-    const password = formData.password;
 
-    const payload = isLogin ? { email, password } : { name, email, password };
-    const result = await authenticate(mode, payload);
+    if (isForgotPassword) {
+      setSubmittingForgot(true);
+      try {
+        const response = await api.post("/auth/forgot-password", { email });
+        setAuthSuccess(
+          response.data?.message ||
+            "If an account exists for this email, password assistance has been initiated. You may also contact your Super Admin directly.",
+        );
+      } catch (err) {
+        setAuthError(
+          err.response?.data?.message ||
+            "Failed to submit password reset request. Please try again.",
+        );
+      } finally {
+        setSubmittingForgot(false);
+      }
+      return;
+    }
+
+    const password = formData.password;
+    const result = await authenticate("login", { email, password });
 
     if (!result) return;
 
     setFormData({ name: "", email: "", password: "" });
     setShowPassword(false);
 
-    if (isLogin) {
-      const isElevated =
-        result.role === "admin" || result.role === "superadmin";
-      navigate(isElevated ? "/admin" : "/dashboard", {
-        replace: true,
-      });
-    }
+    const isElevated =
+      result.role === "admin" || result.role === "superadmin";
+    navigate(isElevated ? "/admin" : "/dashboard", {
+      replace: true,
+    });
   };
+
+  const isLoading = authLoading || submittingForgot;
 
   return (
     <div className="min-h-screen flex bg-canvas text-text-primary transition-colors">
@@ -157,12 +174,12 @@ export function AuthForm({ mode = "login" }) {
         <div className="mx-auto w-full max-w-[400px] my-auto py-8 text-left">
           <div className="space-y-1">
             <h1 className="text-2xl font-bold tracking-tight text-text-primary font-heading">
-              {isLogin ? "Sign in" : "Create account"}
+              {isForgotPassword ? "Forgot password" : "Sign in"}
             </h1>
             <p className="text-sm text-text-secondary leading-relaxed">
-              {isLogin
-                ? "Manage your projects, tasks, and team in one place."
-                : "Set up your account to start managing projects."}
+              {isForgotPassword
+                ? "Enter your registered email address to receive password assistance."
+                : "Manage your projects, tasks, and team in one place."}
             </p>
           </div>
 
@@ -187,44 +204,12 @@ export function AuthForm({ mode = "login" }) {
 
           {/* Form */}
           <form onSubmit={handleSubmit} className="mt-6 space-y-4" noValidate>
-            {!isLogin && (
-              <div>
-                <label
-                  htmlFor="name"
-                  className="mb-1.5 block text-[13px] font-medium text-text-secondary"
-                >
-                  Full name
-                </label>
-                <input
-                  id="name"
-                  name="name"
-                  type="text"
-                  required
-                  maxLength={100}
-                  disabled={authLoading}
-                  value={formData.name}
-                  onChange={handleChange}
-                  placeholder="Alex Morgan"
-                  className={`h-10 w-full rounded-md border bg-surface px-3 text-sm text-text-primary outline-none placeholder:text-text-tertiary transition-colors shadow-subtle ${
-                    clientErrors.name
-                      ? "border-accent focus:border-accent focus:ring-1 focus:ring-accent"
-                      : "border-border focus:border-brand focus:ring-1 focus:ring-brand"
-                  }`}
-                />
-                {clientErrors.name && (
-                  <p className="mt-1 text-[13px] text-accent font-medium">
-                    {clientErrors.name}
-                  </p>
-                )}
-              </div>
-            )}
-
             <div>
               <label
                 htmlFor="email"
                 className="mb-1.5 block text-[13px] font-medium text-text-secondary"
               >
-                Email
+                Work Email
               </label>
               <input
                 id="email"
@@ -233,10 +218,10 @@ export function AuthForm({ mode = "login" }) {
                 autoComplete="email"
                 required
                 maxLength={254}
-                disabled={authLoading}
+                disabled={isLoading}
                 value={formData.email}
                 onChange={handleChange}
-                placeholder="name@company.com"
+                placeholder="name@rankrise.com"
                 className={`h-10 w-full rounded-md border bg-surface px-3 text-sm text-text-primary outline-none placeholder:text-text-tertiary transition-colors shadow-subtle ${
                   clientErrors.email
                     ? "border-accent focus:border-accent focus:ring-1 focus:ring-accent"
@@ -250,79 +235,95 @@ export function AuthForm({ mode = "login" }) {
               )}
             </div>
 
-            <div>
-              <label
-                htmlFor="password"
-                className="mb-1.5 block text-[13px] font-medium text-text-secondary"
-              >
-                Password
-              </label>
-              <div className="relative">
-                <input
-                  id="password"
-                  name="password"
-                  type={showPassword ? "text" : "password"}
-                  autoComplete={isLogin ? "current-password" : "new-password"}
-                  required
-                  minLength={6}
-                  maxLength={128}
-                  disabled={authLoading}
-                  value={formData.password}
-                  onChange={handleChange}
-                  placeholder="••••••••••••"
-                  className={`h-10 w-full rounded-md border bg-surface pl-3 pr-10 text-sm text-text-primary outline-none placeholder:text-text-tertiary transition-colors shadow-subtle ${
-                    clientErrors.password
-                      ? "border-accent focus:border-accent focus:ring-1 focus:ring-accent"
-                      : "border-border focus:border-brand focus:ring-1 focus:ring-brand"
-                  }`}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-2.5 top-2.5 rounded p-0.5 text-text-tertiary hover:text-text-primary transition-colors cursor-pointer"
-                  aria-label={showPassword ? "Hide password" : "Show password"}
-                >
-                  {showPassword ? (
-                    <EyeOffIcon className="h-4 w-4" />
-                  ) : (
-                    <EyeIcon className="h-4 w-4" />
-                  )}
-                </button>
+            {!isForgotPassword && (
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label
+                    htmlFor="password"
+                    className="text-[13px] font-medium text-text-secondary"
+                  >
+                    Password
+                  </label>
+                  <Link
+                    to="/forgot-password"
+                    className="text-[12px] font-medium text-brand hover:underline underline-offset-2"
+                  >
+                    Forgot password?
+                  </Link>
+                </div>
+                <div className="relative">
+                  <input
+                    id="password"
+                    name="password"
+                    type={showPassword ? "text" : "password"}
+                    autoComplete="current-password"
+                    required
+                    minLength={6}
+                    maxLength={128}
+                    disabled={isLoading}
+                    value={formData.password}
+                    onChange={handleChange}
+                    placeholder="••••••••••••"
+                    className={`h-10 w-full rounded-md border bg-surface pl-3 pr-10 text-sm text-text-primary outline-none placeholder:text-text-tertiary transition-colors shadow-subtle ${
+                      clientErrors.password
+                        ? "border-accent focus:border-accent focus:ring-1 focus:ring-accent"
+                        : "border-border focus:border-brand focus:ring-1 focus:ring-brand"
+                    }`}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-2.5 top-2.5 rounded p-0.5 text-text-tertiary hover:text-text-primary transition-colors cursor-pointer"
+                    aria-label={showPassword ? "Hide password" : "Show password"}
+                  >
+                    {showPassword ? (
+                      <EyeOffIcon className="h-4 w-4" />
+                    ) : (
+                      <EyeIcon className="h-4 w-4" />
+                    )}
+                  </button>
+                </div>
+                {clientErrors.password && (
+                  <p className="mt-1 text-[13px] text-accent font-medium">
+                    {clientErrors.password}
+                  </p>
+                )}
               </div>
-              {clientErrors.password && (
-                <p className="mt-1 text-[13px] text-accent font-medium">
-                  {clientErrors.password}
-                </p>
-              )}
-            </div>
+            )}
 
             {/* Primary Action Button */}
             <button
               type="submit"
-              disabled={authLoading}
+              disabled={isLoading}
               className="mt-2 flex h-10 w-full items-center justify-center gap-2 rounded-md bg-brand hover:bg-brand-hover text-brand-text px-4 text-sm font-medium shadow-subtle transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:ring-offset-1 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
             >
-              {authLoading ? (
+              {isLoading ? (
                 <span className="flex items-center justify-center gap-2">
                   <span className="h-4 w-4 animate-spin rounded-full border-2 border-brand-text border-t-transparent" />
-                  <span>{isLogin ? "Signing in..." : "Creating account..."}</span>
+                  <span>{isForgotPassword ? "Submitting request..." : "Signing in..."}</span>
                 </span>
               ) : (
-                <span>{isLogin ? "Sign in" : "Create account"}</span>
+                <span>{isForgotPassword ? "Request Password Reset" : "Sign in"}</span>
               )}
             </button>
           </form>
 
-          {/* Switch Mode Prompt */}
-          <div className="mt-6 text-sm text-text-secondary text-left">
-            <span>{isLogin ? "Don't have an account? " : "Already have an account? "}</span>
-            <Link
-              to={isLogin ? "/register" : "/login"}
-              className="font-medium text-text-primary underline underline-offset-4 hover:text-brand transition-colors"
-            >
-              {isLogin ? "Create account" : "Sign in"}
-            </Link>
-          </div>
+          {/* Prompt section */}
+          {isForgotPassword ? (
+            <div className="mt-6 text-sm text-text-secondary text-left">
+              <span>Remember your password? </span>
+              <Link
+                to="/login"
+                className="font-medium text-text-primary underline underline-offset-4 hover:text-brand transition-colors"
+              >
+                Back to Sign in
+              </Link>
+            </div>
+          ) : (
+            <div className="mt-6 text-[12px] text-text-tertiary text-left">
+              <span>Need an account? Please contact your Super Administrator.</span>
+            </div>
+          )}
         </div>
 
         {/* Clean, Grounded Footer aligned with the form column */}

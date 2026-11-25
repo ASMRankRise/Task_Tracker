@@ -22,7 +22,8 @@ const idOf = (value) => value?._id || value?.id || value || null;
 const nowIso = () => new Date().toISOString();
 const toIso = (value) => {
   if (value === null || value === undefined || value === "") return null;
-  return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
+  const d = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
 };
 const toDate = (value) => (value ? new Date(value) : null);
 

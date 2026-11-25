@@ -10,6 +10,12 @@ function getDefaultDeadline() {
   return `${year}-${month}-${day}T18:00`;
 }
 
+function toSafeIso(dateInput) {
+  if (!dateInput) return null;
+  const d = new Date(dateInput);
+  return isNaN(d.getTime()) ? null : d.toISOString();
+}
+
 function CreateTaskForm({ projects = [], onCreate, loading = false }) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -72,7 +78,9 @@ function CreateTaskForm({ projects = [], onCreate, loading = false }) {
       ...(assignedTo === "ALL"
         ? { assignToAll: true }
         : { assignedTo: [assignedTo] }),
-      ...(dueDate ? { dueDate: new Date(dueDate).toISOString() } : {}),
+      ...(dueDate && toSafeIso(dueDate)
+        ? { dueDate: toSafeIso(dueDate) }
+        : {}),
     };
 
     try {

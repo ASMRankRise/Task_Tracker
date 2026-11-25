@@ -27,6 +27,12 @@ function toDateTimeLocalValue(dateInput) {
   return `${year}-${month}-${day}T${hours}:${minutes}`;
 }
 
+function toSafeIso(dateInput) {
+  if (!dateInput) return null;
+  const d = new Date(dateInput);
+  return isNaN(d.getTime()) ? null : d.toISOString();
+}
+
 export function TaskDetailModal({
   isOpen,
   onClose,
@@ -147,7 +153,7 @@ export function TaskDetailModal({
         description: description.trim(),
         ...(status !== task.status ? { status } : {}),
         priority,
-        dueDate: dueDate ? new Date(dueDate).toISOString() : null,
+        dueDate: toSafeIso(dueDate),
       };
 
       const res = await updateHandler?.(task._id || task.id, payload);

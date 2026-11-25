@@ -56,7 +56,7 @@ const createProject = async (req, res) => {
       });
     }
 
-    if (!/^[\p{L}\p{N}][\p{L}\p{N}\s_-]*$/u.test(trimmedName)) {
+    if (!/^[\p{L}\p{N}][\p{L}\p{N}\s_./()&#:-]*$/u.test(trimmedName)) {
       return res.status(400).json({
         message: "Project name contains invalid characters",
       });
@@ -233,7 +233,7 @@ const updateProject = async (req, res) => {
         });
       }
 
-      if (!/^[\p{L}\p{N}][\p{L}\p{N}\s_-]*$/u.test(trimmedName)) {
+      if (!/^[\p{L}\p{N}][\p{L}\p{N}\s_./()&#:-]*$/u.test(trimmedName)) {
         return res.status(400).json({
           message: "Project name contains invalid characters",
         });

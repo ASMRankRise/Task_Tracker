@@ -289,7 +289,15 @@ export function ReportsPage() {
             : [{ name: "Unassigned" }];
 
         assignees.forEach((a) => {
-          const name = a.name || a.email || "Unassigned";
+          let name = "Unassigned";
+          if (typeof a === "object" && a !== null) {
+            name = a.name || a.email || "Unassigned";
+          } else if (typeof a === "string" && a) {
+            const member = teamMembers.find(
+              (m) => getEntityId(m) === a || m.email?.toLowerCase() === a.toLowerCase(),
+            );
+            name = member?.name || member?.email || a;
+          }
           if (!groupedByMember[name]) groupedByMember[name] = [];
           groupedByMember[name].push(t);
         });
@@ -404,6 +412,7 @@ export function ReportsPage() {
     reportFormat,
     selectedMemberId,
     customNotes,
+    teamMembers,
   ]);
 
   // 6. Copy action with visual and toast feedback

@@ -14,6 +14,8 @@ import {
   CopyIcon,
   CheckCircleIcon,
   UserIcon,
+  PlusIcon,
+  LockIcon,
 } from "../common/Icons";
 import { useToast } from "../../context/ToastContext";
 import { useAuth } from "../../context/AuthContext";
@@ -33,6 +35,24 @@ export function ManageUsers() {
   const [viewMode, setViewMode] = useState("table"); // "table" | "cards"
   const [selectedUser, setSelectedUser] = useState(null);
   const [copiedEmail, setCopiedEmail] = useState("");
+
+  // Create User modal state (Super Admin only)
+  const [createUserModalOpen, setCreateUserModalOpen] = useState(false);
+  const [newUserData, setNewUserData] = useState({
+    name: "",
+    email: "",
+    password: "",
+    role: "user",
+  });
+  const [creatingUser, setCreatingUser] = useState(false);
+  const [createError, setCreateError] = useState("");
+
+  // Reset Password modal state (Super Admin only)
+  const [resetPasswordModalOpen, setResetPasswordModalOpen] = useState(false);
+  const [resetTargetUser, setResetTargetUser] = useState(null);
+  const [newPasswordValue, setNewPasswordValue] = useState("");
+  const [resettingPassword, setResettingPassword] = useState(false);
+  const [resetError, setResetError] = useState("");
 
   const fetchUsers = useCallback(async () => {
     setLoading(true);
@@ -132,6 +152,76 @@ export function ManageUsers() {
     setTimeout(() => setCopiedEmail(""), 2000);
   };
 
+  const handleCreateUser = async (e) => {
+    e.preventDefault();
+    setCreateError("");
+
+    if (!newUserData.name.trim()) {
+      setCreateError("Full name is required.");
+      return;
+    }
+
+    if (!newUserData.email.trim()) {
+      setCreateError("Email is required.");
+      return;
+    }
+
+    if (!newUserData.password || newUserData.password.length < 6) {
+      setCreateError("Password must be at least 6 characters.");
+      return;
+    }
+
+    setCreatingUser(true);
+    try {
+      await api.post("/admin/users", {
+        name: newUserData.name.trim(),
+        email: newUserData.email.trim().toLowerCase(),
+        password: newUserData.password,
+        role: newUserData.role,
+      });
+
+      toastSuccess(`Account created for ${newUserData.name.trim()}`);
+      setCreateUserModalOpen(false);
+      setNewUserData({ name: "", email: "", password: "", role: "user" });
+      await fetchUsers();
+    } catch (err) {
+      setCreateError(
+        err.response?.data?.message || err.message || "Failed to create user account.",
+      );
+    } finally {
+      setCreatingUser(false);
+    }
+  };
+
+  const handleResetPassword = async (e) => {
+    e.preventDefault();
+    setResetError("");
+
+    if (!newPasswordValue || newPasswordValue.length < 6) {
+      setResetError("New password must be at least 6 characters.");
+      return;
+    }
+
+    setResettingPassword(true);
+    try {
+      await api.post("/admin/users/reset-password", {
+        email: resetTargetUser.email,
+        newPassword: newPasswordValue,
+      });
+
+      toastSuccess(`Password reset successfully for ${resetTargetUser.name || resetTargetUser.email}`);
+      setResetPasswordModalOpen(false);
+      setResetTargetUser(null);
+      setNewPasswordValue("");
+    } catch (err) {
+      setResetError(
+        err.response?.data?.message || err.message || "Failed to reset password.",
+      );
+    } finally {
+      setResettingPassword(false);
+    }
+  };
+
   const filteredUsers = users.filter((u) => {
     const q = search.toLowerCase().trim();
     const matchSearch =
@@ -160,6 +250,21 @@ export function ManageUsers() {
         </div>
 
         <div className="flex items-center gap-2">
+          {isSuperAdmin && (
+            <button
+              type="button"
+              onClick={() => {
+                setNewUserData({ name: "", email: "", password: "", role: "user" });
+                setCreateError("");
+                setCreateUserModalOpen(true);
+              }}
+              className="inline-flex h-9 items-center gap-1.5 rounded-md bg-brand hover:bg-brand-hover text-brand-text px-3 text-[13px] font-medium shadow-subtle transition-colors cursor-pointer"
+            >
+              <PlusIcon className="h-4 w-4" />
+              <span>Add Member</span>
+            </button>
+          )}
+
           {/* View Mode Toggle */}
           <div className="inline-flex rounded-md border border-border bg-surface-subtle p-0.5 text-[13px]">
             <button
@@ -344,15 +449,33 @@ export function ManageUsers() {
                         {formattedDate}
                       </td>
 
-                      {/* Actions Column (Plain text link) */}
-                      <td className="py-3 pl-3 pr-4 text-right">
-                        <button
-                          type="button"
-                          onClick={() => setSelectedUser(u)}
-                          className="text-[13px] font-medium text-brand hover:underline cursor-pointer"
-                        >
-                          View details
-                        </button>
+                      {/* Actions Column */}
+                      <td className="py-3 pl-3 pr-4 text-right whitespace-nowrap">
+                        <div className="inline-flex items-center gap-3">
+                          {isSuperAdmin && u.role !== "superadmin" && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setResetTargetUser(u);
+                                setNewPasswordValue("");
+                                setResetError("");
+                                setResetPasswordModalOpen(true);
+                              }}
+                              className="text-[12px] font-medium text-text-secondary hover:text-text-primary hover:underline cursor-pointer"
+                              title="Reset user password"
+                            >
+                              Reset password
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => setSelectedUser(u)}
+                            className="text-[13px] font-medium text-brand hover:underline cursor-pointer"
+                          >
+                            View details
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -568,7 +691,24 @@ export function ManageUsers() {
             </div>
 
             {/* Modal Actions */}
-            <div className="flex justify-end pt-2">
+            <div className="flex items-center justify-between pt-2">
+              <div>
+                {isSuperAdmin && selectedUser.role !== "superadmin" && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setResetTargetUser(selectedUser);
+                      setNewPasswordValue("");
+                      setResetError("");
+                      setResetPasswordModalOpen(true);
+                    }}
+                    className="inline-flex items-center gap-1.5 h-9 rounded-md border border-border bg-surface px-3 text-[12px] font-medium text-text-secondary hover:text-text-primary hover:bg-surface-subtle transition-colors cursor-pointer shadow-subtle"
+                  >
+                    <LockIcon className="h-3.5 w-3.5" />
+                    <span>Reset Password</span>
+                  </button>
+                )}
+              </div>
               <button
                 type="button"
                 onClick={() => setSelectedUser(null)}
@@ -578,6 +718,154 @@ export function ManageUsers() {
               </button>
             </div>
           </div>
+        </Modal>
+      )}
+
+      {/* Create User Modal (Super Admin only) */}
+      {createUserModalOpen && (
+        <Modal
+          isOpen={createUserModalOpen}
+          onClose={() => setCreateUserModalOpen(false)}
+          title="Create Team Member Account"
+        >
+          <form onSubmit={handleCreateUser} className="space-y-4 text-left">
+            {createError && <Alert message={createError} type="error" />}
+
+            <div>
+              <label className="mb-1 block text-[13px] font-medium text-text-secondary">
+                Full Name
+              </label>
+              <input
+                type="text"
+                required
+                maxLength={100}
+                value={newUserData.name}
+                onChange={(e) =>
+                  setNewUserData((prev) => ({ ...prev, name: e.target.value }))
+                }
+                placeholder="Jane Doe"
+                className="h-9 w-full rounded-md border border-border bg-surface px-3 text-sm text-text-primary outline-none focus:border-brand shadow-subtle"
+              />
+            </div>
+
+            <div>
+              <label className="mb-1 block text-[13px] font-medium text-text-secondary">
+                Work Email
+              </label>
+              <input
+                type="email"
+                required
+                maxLength={254}
+                value={newUserData.email}
+                onChange={(e) =>
+                  setNewUserData((prev) => ({ ...prev, email: e.target.value }))
+                }
+                placeholder="jane@rankrise.com"
+                className="h-9 w-full rounded-md border border-border bg-surface px-3 text-sm text-text-primary outline-none focus:border-brand shadow-subtle"
+              />
+            </div>
+
+            <div>
+              <label className="mb-1 block text-[13px] font-medium text-text-secondary">
+                Initial Password
+              </label>
+              <input
+                type="password"
+                required
+                minLength={6}
+                maxLength={128}
+                value={newUserData.password}
+                onChange={(e) =>
+                  setNewUserData((prev) => ({ ...prev, password: e.target.value }))
+                }
+                placeholder="Min. 6 characters"
+                className="h-9 w-full rounded-md border border-border bg-surface px-3 text-sm text-text-primary outline-none focus:border-brand shadow-subtle"
+              />
+            </div>
+
+            <div>
+              <label className="mb-1 block text-[13px] font-medium text-text-secondary">
+                Role
+              </label>
+              <select
+                value={newUserData.role}
+                onChange={(e) =>
+                  setNewUserData((prev) => ({ ...prev, role: e.target.value }))
+                }
+                className="h-9 w-full rounded-md border border-border bg-surface px-3 text-[13px] font-medium text-text-primary outline-none focus:border-brand shadow-subtle cursor-pointer"
+              >
+                <option value="user">Employee (Standard Member)</option>
+                <option value="admin">Administrator (Project Manager)</option>
+              </select>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-3 border-t border-border">
+              <button
+                type="button"
+                onClick={() => setCreateUserModalOpen(false)}
+                className="h-9 rounded-md border border-border bg-surface px-4 text-[13px] font-medium text-text-secondary hover:text-text-primary hover:bg-surface-subtle cursor-pointer shadow-subtle"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={creatingUser}
+                className="h-9 rounded-md bg-brand hover:bg-brand-hover text-brand-text px-4 text-[13px] font-medium disabled:opacity-50 cursor-pointer shadow-subtle"
+              >
+                {creatingUser ? "Creating..." : "Create Account"}
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* Reset Password Modal (Super Admin only) */}
+      {resetPasswordModalOpen && resetTargetUser && (
+        <Modal
+          isOpen={resetPasswordModalOpen}
+          onClose={() => setResetPasswordModalOpen(false)}
+          title={`Reset Password: ${resetTargetUser.name || resetTargetUser.email}`}
+        >
+          <form onSubmit={handleResetPassword} className="space-y-4 text-left">
+            {resetError && <Alert message={resetError} type="error" />}
+
+            <p className="text-sm text-text-secondary leading-relaxed">
+              Set a new password for <strong>{resetTargetUser.email}</strong>.
+            </p>
+
+            <div>
+              <label className="mb-1 block text-[13px] font-medium text-text-secondary">
+                New Password
+              </label>
+              <input
+                type="password"
+                required
+                minLength={6}
+                maxLength={128}
+                value={newPasswordValue}
+                onChange={(e) => setNewPasswordValue(e.target.value)}
+                placeholder="Min. 6 characters"
+                className="h-9 w-full rounded-md border border-border bg-surface px-3 text-sm text-text-primary outline-none focus:border-brand shadow-subtle"
+              />
+            </div>
+
+            <div className="flex justify-end gap-2 pt-3 border-t border-border">
+              <button
+                type="button"
+                onClick={() => setResetPasswordModalOpen(false)}
+                className="h-9 rounded-md border border-border bg-surface px-4 text-[13px] font-medium text-text-secondary hover:text-text-primary hover:bg-surface-subtle cursor-pointer shadow-subtle"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={resettingPassword}
+                className="h-9 rounded-md bg-brand hover:bg-brand-hover text-brand-text px-4 text-[13px] font-medium disabled:opacity-50 cursor-pointer shadow-subtle"
+              >
+                {resettingPassword ? "Saving..." : "Update Password"}
+              </button>
+            </div>
+          </form>
         </Modal>
       )}
     </div>

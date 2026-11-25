@@ -1330,10 +1330,16 @@ const createComment = async (req, res) => {
       project.projectHead.toString() === userId.toString(),
     );
 
-    if (!isSuperAdmin && !isOwner && !isProjectHead) {
+    const isAssigned =
+      Array.isArray(task.assignedTo) &&
+      task.assignedTo.some(
+        (id) => (id._id || id).toString() === userId.toString(),
+      );
+
+    if (!isSuperAdmin && !isOwner && !isProjectHead && !isAssigned) {
       return res.status(403).json({
         message:
-          "Only Super Admin, Project Owner, or Project Head can add comments",
+          "Only Super Admin, Project Owner, Project Head, or assigned members can add comments",
       });
     }
 

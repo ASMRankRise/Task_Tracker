@@ -38,85 +38,45 @@ const getRefreshCookieOptions = () => ({
   maxAge: 7 * 24 * 60 * 60 * 1000,
 });
 
-// REGISTER
+// REGISTER (Disabled for public; accounts are created exclusively by Super Admin)
 const register = async (req, res) => {
+  return res.status(403).json({
+    message: "Public registration is disabled. Please contact your Super Admin to create an account.",
+  });
+};
+
+// FORGOT PASSWORD
+const forgotPassword = async (req, res) => {
   try {
-    const { name, email, password } = req.body;
+    const { email } = req.body;
 
-    if (
-      typeof name !== "string" ||
-      !name.trim() ||
-      typeof email !== "string" ||
-      !email.trim() ||
-      typeof password !== "string" ||
-      !password
-    ) {
+    if (!email || typeof email !== "string") {
       return res.status(400).json({
-        message: "Name, email and password are required",
-      });
-    }
-
-    const trimmedName = name.trim();
-    if (trimmedName.length < 2 || trimmedName.length > 100) {
-      return res.status(400).json({
-        message: "Name must be between 2 and 100 characters",
+        message: "Email address is required",
       });
     }
 
     const normalizedEmail = email.trim().toLowerCase();
-    if (normalizedEmail.length > 254 || !emailRegex.test(normalizedEmail)) {
+    if (!emailRegex.test(normalizedEmail)) {
       return res.status(400).json({
         message: "Please enter a valid email address",
       });
     }
 
-    if (password.length < 6 || password.length > 128) {
-      return res.status(400).json({
-        message: "Password must be between 6 and 128 characters",
-      });
+    const user = await User.findOne({ email: normalizedEmail });
+
+    if (user) {
+      console.log(`[Auth] Password reset requested for ${normalizedEmail}`);
     }
 
-    const existingUser = await User.findOne({
-      email: normalizedEmail,
-    });
-
-    if (existingUser) {
-      return res.status(409).json({
-        message: "Email already registered",
-      });
-    }
-
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    const user = await User.create({
-      name: trimmedName,
-      email: normalizedEmail,
-      password: hashedPassword,
-    });
-
-    return res.status(201).json({
-      message: "User registered successfully",
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-      },
+    return res.status(200).json({
+      message:
+        "If an account is associated with this email, password assistance has been initiated. You may also contact your Super Admin directly to reset your credentials.",
     });
   } catch (error) {
-    console.error("Register error:", error);
-
-    if (
-      error.code === 11000 ||
-      String(error.message).includes("UNIQUE constraint failed: users.email")
-    ) {
-      return res.status(409).json({
-        message: "Email already registered",
-      });
-    }
-
+    console.error("Forgot password error:", error);
     return res.status(500).json({
-      message: "Server error",
+      message: "Server error. Please try again later.",
     });
   }
 };
@@ -364,6 +324,7 @@ const getMe = async (req, res) => {
 module.exports = {
   register,
   login,
+  forgotPassword,
   refresh,
   logout,
   getMe,

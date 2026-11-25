@@ -6,6 +6,7 @@ const router = express.Router();
 const {
   register,
   login,
+  forgotPassword,
   refresh,
   logout,
   getMe,
@@ -15,6 +16,7 @@ const authMiddleware = require("../middleware/auth");
 
 router.post("/register", authRateLimit, register);
 router.post("/login", authRateLimit, login);
+router.post("/forgot-password", authRateLimit, forgotPassword);
 router.post("/refresh", refresh);
 router.post("/logout", logout);
 router.get("/me", authMiddleware, getMe);
