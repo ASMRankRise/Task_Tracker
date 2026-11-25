@@ -92,10 +92,12 @@ export function TaskList({
                   task.status !== "done";
 
                 const formattedDate = task.dueDate
-                  ? new Date(task.dueDate).toLocaleDateString(undefined, {
+                  ? new Date(task.dueDate).toLocaleString(undefined, {
                       month: "short",
                       day: "numeric",
                       year: "numeric",
+                      hour: "numeric",
+                      minute: "2-digit",
                     })
                   : "No deadline";
 

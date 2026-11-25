@@ -8,6 +8,13 @@ app.listen(port);
 
 export default {
   fetch(request, env) {
+    if (env) {
+      for (const [key, val] of Object.entries(env)) {
+        if (typeof val === "string" && !process.env[key]) {
+          process.env[key] = val;
+        }
+      }
+    }
     d1.setDatabase(env.DB);
     return handleAsNodeRequest(port, request);
   },

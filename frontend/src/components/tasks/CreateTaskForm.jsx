@@ -1,13 +1,13 @@
 import { useState } from "react";
 import Alert from "../common/Alert";
 
-function getTodayDate() {
+function getDefaultDeadline() {
   const today = new Date();
   const year = today.getFullYear();
   const month = String(today.getMonth() + 1).padStart(2, "0");
   const day = String(today.getDate()).padStart(2, "0");
 
-  return `${year}-${month}-${day}`;
+  return `${year}-${month}-${day}T18:00`;
 }
 
 function CreateTaskForm({ projects = [], onCreate, loading = false }) {
@@ -16,7 +16,7 @@ function CreateTaskForm({ projects = [], onCreate, loading = false }) {
   const [project, setProject] = useState("");
   const [priority, setPriority] = useState("low");
   const [assignedTo, setAssignedTo] = useState("");
-  const [dueDate, setDueDate] = useState(getTodayDate());
+  const [dueDate, setDueDate] = useState(getDefaultDeadline());
   const [validationError, setValidationError] = useState("");
 
   const selectedProject = projects.find(
@@ -72,7 +72,7 @@ function CreateTaskForm({ projects = [], onCreate, loading = false }) {
       ...(assignedTo === "ALL"
         ? { assignToAll: true }
         : { assignedTo: [assignedTo] }),
-      ...(dueDate ? { dueDate } : {}),
+      ...(dueDate ? { dueDate: new Date(dueDate).toISOString() } : {}),
     };
 
     try {
@@ -84,7 +84,7 @@ function CreateTaskForm({ projects = [], onCreate, loading = false }) {
         setProject("");
         setPriority("low");
         setAssignedTo("");
-        setDueDate(getTodayDate());
+        setDueDate(getDefaultDeadline());
         setValidationError("");
       }
     } catch (err) {
@@ -189,16 +189,15 @@ function CreateTaskForm({ projects = [], onCreate, loading = false }) {
 
           <div className="space-y-2">
             <label htmlFor="dueDate" className="text-sm text-slate-300">
-              Due Date
+              Deadline (Date & Time)
             </label>
 
             <input
               id="dueDate"
-              type="date"
+              type="datetime-local"
               value={dueDate}
-              min={getTodayDate()}
               onChange={(e) => setDueDate(e.target.value)}
-              className="w-full rounded-xl border border-white/10 bg-[#090d19] px-4 py-3"
+              className="w-full rounded-xl border border-white/10 bg-[#090d19] px-4 py-3 text-sm text-white"
             />
           </div>
 

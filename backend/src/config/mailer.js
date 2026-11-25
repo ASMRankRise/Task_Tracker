@@ -49,10 +49,13 @@ const sendTaskAssignmentEmail = async ({
     }
 
     const dueDate = task.dueDate
-        ? new Date(task.dueDate).toLocaleDateString("en-IN", {
+        ? new Date(task.dueDate).toLocaleString("en-IN", {
             day: "2-digit",
-            month: "long",
+            month: "short",
             year: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: true,
         })
         : "Not specified";
 

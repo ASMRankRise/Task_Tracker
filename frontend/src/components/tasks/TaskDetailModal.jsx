@@ -15,6 +15,18 @@ import TaskStatusDropdown from "./TaskStatusDropdown";
 import TaskPriorityDropdown from "./TaskPriorityDropdown";
 import TaskActivityHistory from "./TaskActivityHistory";
 
+function toDateTimeLocalValue(dateInput) {
+  if (!dateInput) return "";
+  const d = new Date(dateInput);
+  if (isNaN(d.getTime())) return "";
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  const hours = String(d.getHours()).padStart(2, "0");
+  const minutes = String(d.getMinutes()).padStart(2, "0");
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
+}
+
 export function TaskDetailModal({
   isOpen,
   onClose,
@@ -51,7 +63,7 @@ export function TaskDetailModal({
       setDescription(task.description || "");
       setStatus(task.status || "todo");
       setPriority(task.priority || "medium");
-      setDueDate(task.dueDate ? new Date(task.dueDate).toISOString().split("T")[0] : "");
+      setDueDate(task.dueDate ? toDateTimeLocalValue(task.dueDate) : "");
       setIsEditing(false);
     }
   }, [task]);
@@ -309,10 +321,10 @@ export function TaskDetailModal({
 
               <div>
                 <label className="block text-[13px] font-medium text-text-secondary mb-1">
-                  Due date
+                  Deadline (Date & Time)
                 </label>
                 <input
-                  type="date"
+                  type="datetime-local"
                   value={dueDate}
                   onChange={(e) => setDueDate(e.target.value)}
                   className="h-9 w-full rounded-md border border-border bg-surface px-3 text-sm text-text-primary outline-none focus:border-brand shadow-subtle"
@@ -376,8 +388,14 @@ export function TaskDetailModal({
               <div className="flex items-center gap-2.5 p-3 rounded-md bg-accent-subtle border border-accent/20 text-accent-text text-sm font-medium">
                 <AlertTriangleIcon className="w-4 h-4 text-accent shrink-0" />
                 <span>
-                  This task is overdue. The due date was{" "}
-                  {new Date(task.dueDate).toLocaleDateString()}.
+                  This task is overdue. The deadline was{" "}
+                  {new Date(task.dueDate).toLocaleString(undefined, {
+                    month: "short",
+                    day: "numeric",
+                    year: "numeric",
+                    hour: "numeric",
+                    minute: "2-digit",
+                  })}.
                 </span>
               </div>
             )}
@@ -402,17 +420,19 @@ export function TaskDetailModal({
 
               <div>
                 <span className="text-text-tertiary block mb-1 font-medium text-[12px]">
-                  Due date
+                  Deadline
                 </span>
                 <div className="flex items-center gap-1.5 text-text-primary text-sm font-medium">
                   <CalendarIcon className="w-4 h-4 text-text-secondary" />
                   <span>
                     {task.dueDate
-                      ? new Date(task.dueDate).toLocaleDateString(undefined, {
+                      ? new Date(task.dueDate).toLocaleString(undefined, {
                           weekday: "short",
                           year: "numeric",
                           month: "short",
                           day: "numeric",
+                          hour: "numeric",
+                          minute: "2-digit",
                         })
                       : "No deadline specified"}
                   </span>

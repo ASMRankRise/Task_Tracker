@@ -296,6 +296,15 @@ export function Icon({
         <path d="m19.07 4.93-1.41 1.41" />
       </>
     ),
+    fileText: (
+      <>
+        <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" />
+        <path d="M14 2v4a2 2 0 0 0 2 2h4" />
+        <path d="M10 9H8" />
+        <path d="M16 13H8" />
+        <path d="M16 17H8" />
+      </>
+    ),
     moon: (
       <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />
     ),
@@ -370,6 +379,7 @@ export const BriefcaseIcon = (props) => <Icon name="briefcase" {...props} />;
 export const BuildingIcon = (props) => <Icon name="building" {...props} />;
 export const CopyIcon = (props) => <Icon name="copy" {...props} />;
 export const BadgeCheckIcon = (props) => <Icon name="badgeCheck" {...props} />;
+export const FileTextIcon = (props) => <Icon name="fileText" {...props} />;
 export const SunIcon = (props) => <Icon name="sun" {...props} />;
 export const MoonIcon = (props) => <Icon name="moon" {...props} />;
 

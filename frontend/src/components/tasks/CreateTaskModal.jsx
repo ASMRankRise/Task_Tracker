@@ -5,12 +5,12 @@ import Alert from "../common/Alert";
 import { PlusIcon } from "../common/Icons";
 import { useAuth } from "../../context/AuthContext";
 
-function getTodayDate() {
+function getDefaultDeadline() {
   const today = new Date();
   const year = today.getFullYear();
   const month = String(today.getMonth() + 1).padStart(2, "0");
   const day = String(today.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
+  return `${year}-${month}-${day}T18:00`;
 }
 
 function createTaskDraft(id, projectId = "") {
@@ -22,7 +22,7 @@ function createTaskDraft(id, projectId = "") {
     status: "todo",
     priority: "low",
     assignedTo: "",
-    dueDate: getTodayDate(),
+    dueDate: getDefaultDeadline(),
     error: "",
   };
 }
@@ -220,7 +220,9 @@ export function CreateTaskModal({
       ...(task.assignedTo === "ALL"
         ? { assignToAll: true }
         : { assignedTo: [task.assignedTo] }),
-      ...(task.dueDate ? { dueDate: task.dueDate } : {}),
+      ...(task.dueDate
+        ? { dueDate: new Date(task.dueDate).toISOString() }
+        : {}),
     }));
 
     setSubmitting(true);
@@ -504,10 +506,10 @@ export function CreateTaskModal({
 
                       <div>
                         <label className="mb-1 block text-xs font-medium text-text-secondary">
-                          Due date
+                          Deadline (Date & Time)
                         </label>
                         <input
-                          type="date"
+                          type="datetime-local"
                           value={task.dueDate}
                           onChange={(event) =>
                             updateTask(task.id, {
