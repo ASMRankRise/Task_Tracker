@@ -7,7 +7,7 @@ const { isValidId } = require("../db/d1");
 const crypto = require("crypto");
 const redis = require("../config/redis");
 const TaskActivity = require("../models/TaskActivity");
-const { sendTaskAssignmentEmail } = require("../config/mailer");
+const { sendTaskAssignmentEmails } = require("../config/mailer");
 const {
   TASK_CACHE_VERSION_KEY,
   getShortId,
@@ -237,21 +237,15 @@ const createTask = async (req, res) => {
       { path: "submittedBy", select: "name email" },
     ]);
 
-    if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
-      Promise.allSettled(
-        task.assignedTo
-          .filter((member) => member.email)
-          .map((member) =>
-            sendTaskAssignmentEmail({
-              to: member.email,
-              task,
-              projectName: task.project.name,
-              assignedBy: task.createdBy.name,
-            }),
-          ),
-      ).catch((err) => {
-        console.warn("[Task] Email notification error:", err.message || err);
+    try {
+      await sendTaskAssignmentEmails({
+        recipients: task.assignedTo || [],
+        task,
+        projectName: task.project?.name || foundProject.name,
+        assignedBy: task.createdBy?.name || "Team Admin",
       });
+    } catch (err) {
+      console.warn("[Task] Email notification error:", err.message || err);
     }
 
     await invalidateTaskRelatedCaches(task._id, task.title);
@@ -1183,6 +1177,26 @@ const updateTask = async (req, res) => {
       { path: "createdBy", select: "name email" },
       { path: "submittedBy", select: "name email" },
     ]);
+
+    const newlyAssignedMembers = (task.assignedTo || []).filter(
+      (member) =>
+        member?.email &&
+        !previousAssignedIds.includes((member._id || member).toString()),
+    );
+
+    if (newlyAssignedMembers.length > 0 && process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+      try {
+        const assigner = await User.findById(userId).select("name");
+        await sendTaskAssignmentEmails({
+          recipients: newlyAssignedMembers,
+          task,
+          projectName: task.project?.name || project.name,
+          assignedBy: assigner?.name || task.createdBy?.name || "Team Admin",
+        });
+      } catch (err) {
+        console.warn("[Task] Reassignment email notification error:", err.message || err);
+      }
+    }
 
     return res.status(200).json({
       message: "Task updated successfully",
