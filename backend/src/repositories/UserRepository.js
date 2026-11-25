@@ -113,21 +113,40 @@ const repository = {
   async save(user) {
     const db = getDatabase();
     const timestamp = nowIso();
-    await db
-      .prepare(
-        `UPDATE users
-         SET name = ?, email = ?, token_version = ?, role = ?, updated_at = ?
-         WHERE id = ?`,
-      )
-      .bind(
-        user.name,
-        user.email,
-        user.tokenVersion ?? 0,
-        user.role,
-        timestamp,
-        String(user._id),
-      )
-      .run();
+    if (user.password) {
+      await db
+        .prepare(
+          `UPDATE users
+           SET name = ?, email = ?, password = ?, token_version = ?, role = ?, updated_at = ?
+           WHERE id = ?`,
+        )
+        .bind(
+          user.name,
+          user.email,
+          user.password,
+          user.tokenVersion ?? 0,
+          user.role,
+          timestamp,
+          String(user._id),
+        )
+        .run();
+    } else {
+      await db
+        .prepare(
+          `UPDATE users
+           SET name = ?, email = ?, token_version = ?, role = ?, updated_at = ?
+           WHERE id = ?`,
+        )
+        .bind(
+          user.name,
+          user.email,
+          user.tokenVersion ?? 0,
+          user.role,
+          timestamp,
+          String(user._id),
+        )
+        .run();
+    }
     user.updatedAt = new Date(timestamp);
   },
 

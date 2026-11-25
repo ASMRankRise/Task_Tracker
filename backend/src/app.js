@@ -15,14 +15,23 @@ app.use(
   cors({
     origin: (origin, callback) => {
       if (!origin) return callback(null, true);
-      const configuredClient = process.env.CLIENT_URL || "http://localhost:5173";
+      const configuredClients = (process.env.CLIENT_URL || "")
+        .split(",")
+        .map((s) => s.trim().replace(/\/$/, ""))
+        .filter(Boolean);
+
       const allowed = new Set([
-        configuredClient,
-        configuredClient.replace(/\/$/, ""),
+        ...configuredClients,
         "http://localhost:5173",
         "http://127.0.0.1:5173",
+        "http://localhost:3000",
       ]);
-      if (allowed.has(origin)) {
+
+      if (
+        allowed.has(origin.replace(/\/$/, "")) ||
+        /^https:\/\/[a-z0-9-]+\.pages\.dev$/i.test(origin) ||
+        /^http:\/\/(localhost|127\.0\.0\.1):\d+$/i.test(origin)
+      ) {
         return callback(null, true);
       }
       return callback(null, false);

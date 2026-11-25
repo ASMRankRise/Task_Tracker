@@ -13,6 +13,12 @@ function getDefaultDeadline() {
   return `${year}-${month}-${day}T18:00`;
 }
 
+function toSafeIso(dateInput) {
+  if (!dateInput) return null;
+  const d = new Date(dateInput);
+  return isNaN(d.getTime()) ? null : d.toISOString();
+}
+
 function createTaskDraft(id, projectId = "") {
   return {
     id,
@@ -220,8 +226,8 @@ export function CreateTaskModal({
       ...(task.assignedTo === "ALL"
         ? { assignToAll: true }
         : { assignedTo: [task.assignedTo] }),
-      ...(task.dueDate
-        ? { dueDate: new Date(task.dueDate).toISOString() }
+      ...(task.dueDate && toSafeIso(task.dueDate)
+        ? { dueDate: toSafeIso(task.dueDate) }
         : {}),
     }));
 

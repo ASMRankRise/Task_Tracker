@@ -149,9 +149,16 @@ const fetchTasks = async (filter, options = {}, single = false) => {
   const db = getDatabase();
   const values = [];
   const where = condition(filter, values);
-  const order = options.sort?.createdAt
-    ? ` ORDER BY t.created_at ${options.sort.createdAt === -1 ? "DESC" : "ASC"}`
-    : "";
+  let order = "";
+  if (options.sort) {
+    if (options.sort.createdAt) {
+      order = ` ORDER BY t.created_at ${options.sort.createdAt === -1 ? "DESC" : "ASC"}`;
+    } else if (options.sort.updatedAt) {
+      order = ` ORDER BY t.updated_at ${options.sort.updatedAt === -1 ? "DESC" : "ASC"}`;
+    } else if (options.sort.dueDate) {
+      order = ` ORDER BY t.due_date ${options.sort.dueDate === -1 ? "DESC" : "ASC"}`;
+    }
+  }
   const limit =
     options.limit !== null && options.limit !== undefined
       ? ` LIMIT ${Math.max(0, Number(options.limit) || 0)}`
