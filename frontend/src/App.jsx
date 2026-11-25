@@ -34,7 +34,9 @@ function App() {
 
       <Route path="/login" element={<AuthForm mode="login" />} />
 
-      <Route path="/register" element={<AuthForm mode="register" />} />
+      <Route path="/forgot-password" element={<AuthForm mode="forgot-password" />} />
+
+      <Route path="/register" element={<Navigate to="/login" replace />} />
 
       <Route path="/logout" element={<LogoutPage onLogout={logout} />} />
 
