@@ -1,5 +1,120 @@
 const nodemailer = require("nodemailer");
 
+let socketConnector = null;
+
+const setSocketConnector = (connector) => {
+    socketConnector = typeof connector === "function" ? connector : null;
+};
+
+const encodeHeaderUtf8 = (value = "") =>
+    `=?UTF-8?B?${Buffer.from(String(value), "utf8").toString("base64")}?=`;
+
+const chunkBase64 = (value = "") =>
+    Buffer.from(String(value), "utf8")
+        .toString("base64")
+        .replace(/.{1,76}/g, "$&\r\n")
+        .trimEnd();
+
+const sendViaCloudflareSocket = async ({
+    host,
+    port,
+    user,
+    pass,
+    from,
+    to,
+    subject,
+    text,
+    html,
+}) => {
+    const sock = socketConnector(
+        { hostname: host, port },
+        { secureTransport: "on" },
+    );
+    const reader = sock.readable.getReader();
+    const writer = sock.writable.getWriter();
+    const enc = new TextEncoder();
+    const dec = new TextDecoder();
+    let buf = "";
+
+    const readReply = async () => {
+        while (true) {
+            const lines = buf.split("\r\n");
+            for (let i = 0; i < lines.length - 1; i++) {
+                const line = lines[i];
+                if (/^\d{3} /.test(line)) {
+                    const reply = lines.slice(0, i + 1).join("\r\n");
+                    buf = lines.slice(i + 1).join("\r\n");
+                    return { code: Number(line.slice(0, 3)), text: reply };
+                }
+            }
+            const { value, done } = await reader.read();
+            if (done) throw new Error("SMTP connection closed unexpectedly");
+            buf += dec.decode(value, { stream: true });
+        }
+    };
+
+    const cmd = async (line, expectedCodes) => {
+        await writer.write(enc.encode(line + "\r\n"));
+        const res = await readReply();
+        if (!expectedCodes.includes(res.code)) {
+            throw new Error(`SMTP error (${res.code}): ${res.text}`);
+        }
+        return res;
+    };
+
+    try {
+        const greet = await readReply();
+        if (greet.code !== 220) {
+            throw new Error(`Unexpected SMTP greeting (${greet.code}): ${greet.text}`);
+        }
+
+        await cmd("EHLO tasktracker.asmrankrise.in", [250]);
+        await cmd("AUTH LOGIN", [334]);
+        await cmd(Buffer.from(user, "utf8").toString("base64"), [334]);
+        await cmd(Buffer.from(pass, "utf8").toString("base64"), [235]);
+        await cmd(`MAIL FROM:<${user}>`, [250]);
+        await cmd(`RCPT TO:<${to}>`, [250, 251]);
+        await cmd("DATA", [354]);
+
+        const boundary = `----=_Part_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+        const messageId = `<${Date.now()}.${Math.random().toString(36).slice(2)}@tasktracker.asmrankrise.in>`;
+        const mime = [
+            `From: ${from}`,
+            `To: <${to}>`,
+            `Subject: ${encodeHeaderUtf8(subject)}`,
+            `Date: ${new Date().toUTCString()}`,
+            `Message-ID: ${messageId}`,
+            `MIME-Version: 1.0`,
+            `Content-Type: multipart/alternative; boundary="${boundary}"`,
+            ``,
+            `--${boundary}`,
+            `Content-Type: text/plain; charset=UTF-8`,
+            `Content-Transfer-Encoding: base64`,
+            ``,
+            chunkBase64(text),
+            `--${boundary}`,
+            `Content-Type: text/html; charset=UTF-8`,
+            `Content-Transfer-Encoding: base64`,
+            ``,
+            chunkBase64(html),
+            `--${boundary}--`,
+            ``,
+        ].join("\r\n");
+
+        const dataRes = await cmd(`${mime}\r\n.`, [250]);
+        await cmd("QUIT", [221]).catch(() => {});
+        return { messageId, response: dataRes.text };
+    } finally {
+        try {
+            reader.releaseLock();
+        } catch {}
+        try {
+            writer.releaseLock();
+        } catch {}
+        await sock.close().catch(() => {});
+    }
+};
+
 const createTransporter = () => {
     if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
         return null;
@@ -45,8 +160,7 @@ const sendTaskAssignmentEmail = async ({
     projectName,
     assignedBy,
 }) => {
-    const transport = createTransporter();
-    if (!transport) {
+    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
         return null;
     }
 
@@ -81,12 +195,9 @@ const sendTaskAssignmentEmail = async ({
         ? `View and manage this task: ${appUrl}`
         : "Please login to your Task Tracker to view the task.";
 
-    try {
-        const info = await transport.sendMail({
-            from: `"${fromName}" <${process.env.EMAIL_USER}>`,
-            to,
-            subject: `New Task Assigned: ${task.title}`,
-            text: `A new task has been assigned to you.
+    const from = `"${fromName}" <${process.env.EMAIL_USER}>`;
+    const subject = `New Task Assigned: ${task.title}`;
+    const text = `A new task has been assigned to you.
 
 Task: ${task.title}
 Description: ${task.description || "No description"}
@@ -95,8 +206,8 @@ Priority: ${task.priority || "low"}
 Due Date: ${dueDate}
 Assigned By: ${assignedBy || "Team Admin"}
 
-${ctaText}`,
-            html: `
+${ctaText}`;
+    const html = `
       <div style="background:#f4f5f7;padding:30px;font-family:Arial,sans-serif;">
         <div style="max-width:560px;margin:auto;background:#ffffff;border-radius:12px;overflow:hidden;">
           <div style="background:#2563eb;padding:24px;color:#ffffff;">
@@ -135,7 +246,43 @@ ${ctaText}`,
           </div>
         </div>
       </div>
-    `,
+    `;
+
+    if (socketConnector) {
+        const host = process.env.SMTP_HOST || "smtp.gmail.com";
+        const port = Number(process.env.SMTP_PORT || 465);
+        try {
+            const info = await sendViaCloudflareSocket({
+                host,
+                port,
+                user: process.env.EMAIL_USER,
+                pass: process.env.EMAIL_PASS,
+                from,
+                to,
+                subject,
+                text,
+                html,
+            });
+            console.log(`[Mailer] Task assignment email sent via Cloudflare socket to ${to} (${info?.messageId || "ok"})`);
+            return info;
+        } catch (error) {
+            console.warn(`[Mailer] Failed to send email via Cloudflare socket to ${to}:`, error.message || error);
+            return null;
+        }
+    }
+
+    const transport = createTransporter();
+    if (!transport) {
+        return null;
+    }
+
+    try {
+        const info = await transport.sendMail({
+            from,
+            to,
+            subject,
+            text,
+            html,
         });
         console.log(`[Mailer] Task assignment email sent to ${to} (${info?.messageId || "ok"})`);
         return info;
@@ -184,4 +331,8 @@ const sendTaskAssignmentEmails = async ({
     );
 };
 
-module.exports = { sendTaskAssignmentEmail, sendTaskAssignmentEmails };
+module.exports = {
+    sendTaskAssignmentEmail,
+    sendTaskAssignmentEmails,
+    setSocketConnector,
+};
