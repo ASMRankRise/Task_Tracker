@@ -337,6 +337,15 @@ export function Icon({
         <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
       </>
     ),
+    sticker: (
+      <>
+        <path d="M15.5 3H5a2 2 0 0 0-2 2v14c0 1.1.9 2 2 2h14a2 2 0 0 0 2-2V8.5L15.5 3Z" />
+        <path d="M14 3v4a2 2 0 0 0 2 2h4" />
+        <path d="M8 13h.01" />
+        <path d="M16 13h.01" />
+        <path d="M10 16s.8 1 2 1c1.3 0 2-1 2-1" />
+      </>
+    ),
   };
 
   const content = icons[name] || icons.sparkles;
@@ -416,5 +425,6 @@ export const SendIcon = (props) => <Icon name="send" {...props} />;
 export const HashIcon = (props) => <Icon name="hash" {...props} />;
 export const ReplyIcon = (props) => <Icon name="reply" {...props} />;
 export const LinkIcon = (props) => <Icon name="link" {...props} />;
+export const StickerIcon = (props) => <Icon name="sticker" {...props} />;
 
 export default Icon;

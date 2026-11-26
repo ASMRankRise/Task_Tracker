@@ -4,8 +4,40 @@ const Task = require("../models/Task");
 const Project = require("../models/Project");
 const ChatRepository = require("../repositories/ChatRepository");
 const chatBroker = require("../realtime/chatBroker");
+const { isValidStickerId } = require("../config/stickers");
 
 const MAX_MESSAGE_LENGTH = 4000;
+const ALLOWED_MESSAGE_TYPES = new Set(["text", "sticker"]);
+const MAX_CUSTOM_STICKER_BYTES = 200 * 1024; // 200 KB binary
+const MAX_WORKSPACE_CUSTOM_STICKERS = 200;
+const DATA_URL_RE = /^data:(image\/(?:webp|png|gif));base64,([A-Za-z0-9+/=\r\n]+)$/;
+
+const hasValidImageSignature = (buffer, mimeType) => {
+  if (!Buffer.isBuffer(buffer) || buffer.length < 12) return false;
+  if (mimeType === "image/webp") {
+    return (
+      buffer.subarray(0, 4).toString("ascii") === "RIFF" &&
+      buffer.subarray(8, 12).toString("ascii") === "WEBP"
+    );
+  }
+  if (mimeType === "image/png") {
+    return (
+      buffer[0] === 0x89 &&
+      buffer[1] === 0x50 &&
+      buffer[2] === 0x4e &&
+      buffer[3] === 0x47 &&
+      buffer[4] === 0x0d &&
+      buffer[5] === 0x0a &&
+      buffer[6] === 0x1a &&
+      buffer[7] === 0x0a
+    );
+  }
+  if (mimeType === "image/gif") {
+    const sig = buffer.subarray(0, 6).toString("ascii");
+    return sig === "GIF87a" || sig === "GIF89a";
+  }
+  return false;
+};
 
 const handleAccessCheck = async (conversationId, user, res) => {
   if (!isValidId(conversationId)) {
@@ -256,17 +288,54 @@ const sendMessage = async (req, res) => {
     const access = await handleAccessCheck(conversationId, req.user, res);
     if (!access) return;
 
-    const { content, taskId, replyToId } = req.body || {};
+    const {
+      content,
+      taskId,
+      replyToId,
+      messageType = "text",
+      stickerId = null,
+    } = req.body || {};
 
-    if (typeof content !== "string" || !content.trim()) {
-      return res.status(400).json({ message: "Message cannot be empty" });
+    const normalizedType =
+      typeof messageType === "string" ? messageType.trim().toLowerCase() : "text";
+    if (!ALLOWED_MESSAGE_TYPES.has(normalizedType)) {
+      return res.status(400).json({ message: "Unsupported message type" });
     }
 
-    const trimmed = content.trim();
-    if (trimmed.length > MAX_MESSAGE_LENGTH) {
-      return res.status(400).json({
-        message: `Message cannot exceed ${MAX_MESSAGE_LENGTH} characters`,
-      });
+    let trimmed = "";
+    let validatedStickerId = null;
+
+    if (normalizedType === "sticker") {
+      if (typeof stickerId !== "string" || !stickerId.trim()) {
+        return res.status(400).json({ message: "Invalid sticker selected" });
+      }
+      const trimmedStickerId = stickerId.trim();
+      if (isValidStickerId(trimmedStickerId)) {
+        validatedStickerId = trimmedStickerId;
+      } else if (trimmedStickerId.startsWith("custom/")) {
+        const customId = trimmedStickerId.slice("custom/".length);
+        if (!isValidId(customId)) {
+          return res.status(400).json({ message: "Invalid custom sticker selected" });
+        }
+        const exists = await ChatRepository.customStickerExists(customId);
+        if (!exists) {
+          return res.status(404).json({ message: "Custom sticker not found" });
+        }
+        validatedStickerId = `custom/${customId}`;
+      } else {
+        return res.status(400).json({ message: "Invalid sticker selected" });
+      }
+    } else {
+      if (typeof content !== "string" || !content.trim()) {
+        return res.status(400).json({ message: "Message cannot be empty" });
+      }
+
+      trimmed = content.trim();
+      if (trimmed.length > MAX_MESSAGE_LENGTH) {
+        return res.status(400).json({
+          message: `Message cannot exceed ${MAX_MESSAGE_LENGTH} characters`,
+        });
+      }
     }
 
     let validatedTaskId = null;
@@ -311,6 +380,8 @@ const sendMessage = async (req, res) => {
       conversationId,
       senderId: req.user.userId,
       content: trimmed,
+      messageType: normalizedType,
+      stickerId: validatedStickerId,
       taskId: validatedTaskId,
       replyToId: validatedReplyId,
     });
@@ -373,6 +444,10 @@ const editMessage = async (req, res) => {
 
     if (existing.deleted_at) {
       return res.status(400).json({ message: "Deleted messages cannot be edited" });
+    }
+
+    if ((existing.message_type || "text") === "sticker") {
+      return res.status(400).json({ message: "Sticker messages cannot be edited" });
     }
 
     const { content } = req.body || {};
@@ -452,6 +527,150 @@ const deleteMessage = async (req, res) => {
   }
 };
 
+// GET /api/chat/stickers/custom
+const listCustomStickers = async (req, res) => {
+  try {
+    const stickers = await ChatRepository.listCustomStickers();
+    return res.status(200).json({ stickers });
+  } catch (error) {
+    console.error("[Chat] List custom stickers error:", error.message || error);
+    return res.status(500).json({ message: "Failed to load custom stickers" });
+  }
+};
+
+// POST /api/chat/stickers/custom
+const uploadCustomSticker = async (req, res) => {
+  try {
+    const { label, dataUrl } = req.body || {};
+
+    if (typeof label !== "string" || !label.trim()) {
+      return res.status(400).json({ message: "Sticker name is required" });
+    }
+    const trimmedLabel = label.trim();
+    if (trimmedLabel.length > 40) {
+      return res.status(400).json({ message: "Sticker name must be 40 characters or less" });
+    }
+
+    if (typeof dataUrl !== "string") {
+      return res.status(400).json({ message: "Sticker image is required" });
+    }
+
+    const match = DATA_URL_RE.exec(dataUrl.trim());
+    if (!match) {
+      return res.status(400).json({
+        message: "Sticker must be a valid WebP, PNG, or GIF image",
+      });
+    }
+
+    const mimeType = match[1];
+    const base64Clean = match[2].replace(/\s+/g, "");
+    const buffer = Buffer.from(base64Clean, "base64");
+
+    if (!buffer.length || buffer.length > MAX_CUSTOM_STICKER_BYTES) {
+      return res.status(400).json({
+        message: "Sticker image must be under 200 KB after optimization",
+      });
+    }
+
+    if (!hasValidImageSignature(buffer, mimeType)) {
+      return res.status(400).json({
+        message: "Uploaded file content does not match a valid image format",
+      });
+    }
+
+    const existingCount = await ChatRepository.countCustomStickers();
+    if (existingCount >= MAX_WORKSPACE_CUSTOM_STICKERS) {
+      return res.status(400).json({
+        message: `Workspace limit of ${MAX_WORKSPACE_CUSTOM_STICKERS} custom stickers reached. Delete an unused sticker first.`,
+      });
+    }
+
+    const sticker = await ChatRepository.createCustomSticker({
+      label: trimmedLabel,
+      mimeType,
+      imageData: buffer.toString("base64"),
+      sizeBytes: buffer.length,
+      uploadedBy: req.user.userId,
+    });
+
+    const onlineIds = await chatBroker.getOnlineUserIds();
+    if (onlineIds.length > 0) {
+      await chatBroker.broadcastToUsers(onlineIds, {
+        type: "chat:custom_sticker_added",
+        sticker,
+      });
+    }
+
+    return res.status(201).json({ sticker });
+  } catch (error) {
+    console.error("[Chat] Upload custom sticker error:", error.message || error);
+    return res.status(500).json({ message: "Failed to upload custom sticker" });
+  }
+};
+
+// GET /api/chat/stickers/custom/:stickerId/image
+const getCustomStickerImage = async (req, res) => {
+  try {
+    const { stickerId } = req.params;
+    if (!isValidId(stickerId)) {
+      return res.status(400).json({ message: "Invalid sticker ID" });
+    }
+
+    const row = await ChatRepository.findCustomStickerById(stickerId);
+    if (!row) {
+      return res.status(404).json({ message: "Sticker not found" });
+    }
+
+    const buffer = Buffer.from(row.image_data, "base64");
+    res.setHeader("Content-Type", row.mime_type);
+    res.setHeader("Cache-Control", "private, max-age=31536000, immutable");
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    return res.status(200).send(buffer);
+  } catch (error) {
+    console.error("[Chat] Get custom sticker image error:", error.message || error);
+    return res.status(500).json({ message: "Failed to load sticker image" });
+  }
+};
+
+// DELETE /api/chat/stickers/custom/:stickerId
+const deleteCustomSticker = async (req, res) => {
+  try {
+    const { stickerId } = req.params;
+    if (!isValidId(stickerId)) {
+      return res.status(400).json({ message: "Invalid sticker ID" });
+    }
+
+    const existing = await ChatRepository.findCustomStickerById(stickerId);
+    if (!existing) {
+      return res.status(404).json({ message: "Custom sticker not found" });
+    }
+
+    const isUploader = String(existing.uploaded_by) === String(req.user.userId);
+    const isSuperAdmin = req.user.role === "superadmin";
+    if (!isUploader && !isSuperAdmin) {
+      return res.status(403).json({
+        message: "Only the uploader or a super admin can delete this sticker",
+      });
+    }
+
+    await ChatRepository.deleteCustomSticker(stickerId);
+
+    const fullId = `custom/${stickerId}`;
+    const onlineIds = await chatBroker.getOnlineUserIds();
+    if (onlineIds.length > 0) {
+      await chatBroker.broadcastToUsers(onlineIds, {
+        type: "chat:custom_sticker_deleted",
+        stickerId: fullId,
+      });
+    }
+
+    return res.status(200).json({ deletedId: fullId });
+  } catch (error) {
+    console.error("[Chat] Delete custom sticker error:", error.message || error);
+    return res.status(500).json({ message: "Failed to delete custom sticker" });
+  }
+};
+
 module.exports = {
   issueWebSocketTicket,
   getChatUsers,
@@ -465,4 +684,8 @@ module.exports = {
   markAsRead,
   editMessage,
   deleteMessage,
+  listCustomStickers,
+  uploadCustomSticker,
+  getCustomStickerImage,
+  deleteCustomSticker,
 };

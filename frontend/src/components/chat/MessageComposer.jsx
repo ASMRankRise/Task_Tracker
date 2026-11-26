@@ -3,20 +3,28 @@ import {
   LinkIcon,
   ReplyIcon,
   SendIcon,
+  StickerIcon,
   XIcon,
 } from "../common/Icons";
+import StickerPicker from "./StickerPicker";
+import { getStickerUrl, recordRecentSticker } from "./stickerCatalog";
 
 export function MessageComposer({
   disabled = false,
   replyTo = null,
   onCancelReply,
   tasks = [],
+  customStickers = [],
+  currentUser = null,
+  onUploadSticker,
+  onDeleteSticker,
   onSendMessage,
   onTyping,
 }) {
   const [content, setContent] = useState("");
   const [selectedTask, setSelectedTask] = useState(null);
   const [taskPickerOpen, setTaskPickerOpen] = useState(false);
+  const [stickerPickerOpen, setStickerPickerOpen] = useState(false);
   const [taskQuery, setTaskQuery] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
@@ -78,6 +86,27 @@ export function MessageComposer({
     }
   };
 
+  const handleSendSticker = async (sticker) => {
+    if (disabled || sending || !sticker?.id) return;
+    setSending(true);
+    setError("");
+    setStickerPickerOpen(false);
+    try {
+      recordRecentSticker(sticker.id);
+      await onSendMessage({
+        messageType: "sticker",
+        stickerId: sticker.id,
+        replyToId: replyTo?._id || null,
+      });
+      onCancelReply?.();
+      onTyping?.(false);
+    } catch (err) {
+      setError(err.response?.data?.message || "Failed to send sticker.");
+    } finally {
+      setSending(false);
+    }
+  };
+
   const handleKeyDown = (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -85,8 +114,26 @@ export function MessageComposer({
     }
   };
 
+  const replyStickerUrl =
+    replyTo?.messageType === "sticker" && replyTo?.stickerId
+      ? getStickerUrl(replyTo.stickerId)
+      : null;
+
   return (
     <div className="relative border-t border-border bg-surface p-3 text-left">
+      {/* Sticker Picker Popover */}
+      {stickerPickerOpen && (
+        <StickerPicker
+          disabled={disabled || sending}
+          customStickers={customStickers}
+          currentUser={currentUser}
+          onUploadSticker={onUploadSticker}
+          onDeleteSticker={onDeleteSticker}
+          onSelectSticker={handleSendSticker}
+          onClose={() => setStickerPickerOpen(false)}
+        />
+      )}
+
       {/* Task Picker Popover */}
       {taskPickerOpen && (
         <div className="absolute bottom-full left-3 right-3 sm:right-auto sm:w-80 mb-2 rounded-lg border border-border bg-surface shadow-lg z-20 overflow-hidden">
@@ -150,9 +197,21 @@ export function MessageComposer({
             <span className="font-semibold text-text-primary shrink-0">
               {replyTo.sender?.name || "Team Member"}:
             </span>
-            <span className="truncate text-text-secondary">
-              {replyTo.content}
-            </span>
+            {replyStickerUrl ? (
+              <span className="inline-flex items-center gap-1 text-text-secondary">
+                <img
+                  src={replyStickerUrl}
+                  alt="Sticker"
+                  className="h-5 w-5 object-contain shrink-0"
+                  draggable={false}
+                />
+                <span>Sticker</span>
+              </span>
+            ) : (
+              <span className="truncate text-text-secondary">
+                {replyTo.messageType === "sticker" ? "Sticker" : replyTo.content}
+              </span>
+            )}
           </div>
           <button
             type="button"
@@ -190,9 +249,32 @@ export function MessageComposer({
       <form onSubmit={handleSubmit} className="flex items-end gap-2">
         <button
           type="button"
+          data-sticker-toggle="true"
           disabled={disabled || sending}
-          onClick={() => setTaskPickerOpen((prev) => !prev)}
+          onClick={() => {
+            setStickerPickerOpen((prev) => !prev);
+            setTaskPickerOpen(false);
+          }}
+          title="Send a sticker"
+          aria-label="Send a sticker"
+          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border transition-colors cursor-pointer disabled:opacity-50 ${
+            stickerPickerOpen
+              ? "bg-brand/10 text-brand border-brand/30"
+              : "bg-surface-subtle text-text-secondary hover:text-text-primary"
+          }`}
+        >
+          <StickerIcon className="h-4 w-4" />
+        </button>
+
+        <button
+          type="button"
+          disabled={disabled || sending}
+          onClick={() => {
+            setTaskPickerOpen((prev) => !prev);
+            setStickerPickerOpen(false);
+          }}
           title="Reference a task"
+          aria-label="Reference a task"
           className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border transition-colors cursor-pointer disabled:opacity-50 ${
             selectedTask || taskPickerOpen
               ? "bg-brand/10 text-brand border-brand/30"

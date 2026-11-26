@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Avatar } from "../common/Avatar";
-import { HashIcon, PlusIcon, SearchIcon, UsersIcon } from "../common/Icons";
+import { HashIcon, PlusIcon, SearchIcon, StickerIcon, UsersIcon } from "../common/Icons";
 import { formatRelativeTime, getConversationDisplay } from "./chatHelpers";
 
 export function ConversationList({
@@ -189,10 +189,17 @@ export function ConversationList({
                           : "text-text-secondary"
                       }`}
                     >
-                      {conv.lastMessagePreview ||
+                      {conv.lastMessagePreview === "Sticker" ? (
+                        <span className="inline-flex items-center gap-1 align-middle">
+                          <StickerIcon className="h-3.5 w-3.5 shrink-0 text-text-tertiary" />
+                          <span>Sticker</span>
+                        </span>
+                      ) : (
+                        conv.lastMessagePreview ||
                         (conv.type === "project"
                           ? "Project channel"
-                          : "No messages yet")}
+                          : "No messages yet")
+                      )}
                     </p>
 
                     {unread > 0 && (

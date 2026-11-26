@@ -17,6 +17,31 @@ import {
   getDateKey,
   getEntityId,
 } from "./chatHelpers";
+import { getStickerMeta, getStickerUrl } from "./stickerCatalog";
+
+function StickerImage({ src, alt, className }) {
+  const [failed, setFailed] = useState(false);
+
+  if (!src || failed) {
+    return (
+      <div className="flex h-28 w-28 items-center justify-center rounded-xl border border-dashed border-border bg-surface/60 px-2 text-center text-[11px] text-text-tertiary">
+        Sticker unavailable
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={src}
+      alt={alt || "Sticker"}
+      title={alt || "Sticker"}
+      loading="lazy"
+      draggable={false}
+      onError={() => setFailed(true)}
+      className={className}
+    />
+  );
+}
 
 export function MessageThread({
   conversation,
@@ -26,6 +51,7 @@ export function MessageThread({
   currentUser,
   onlineIds = [],
   typingUsers = [],
+  customStickers = [],
   onLoadOlder,
   onReply,
   onEditMessage,
@@ -211,6 +237,22 @@ export function MessageThread({
                 5 * 60 * 1000;
 
             const isEditing = editingMessageId === msg._id;
+            const isSticker =
+              !msg.deleted &&
+              msg.messageType === "sticker" &&
+              Boolean(msg.stickerId);
+            const stickerMeta = isSticker
+              ? getStickerMeta(msg.stickerId, customStickers)
+              : null;
+            const stickerUrl = isSticker ? getStickerUrl(msg.stickerId) : null;
+            const replyStickerUrl =
+              !msg.deleted &&
+              msg.replyTo &&
+              !msg.replyTo.deleted &&
+              msg.replyTo.messageType === "sticker" &&
+              msg.replyTo.stickerId
+                ? getStickerUrl(msg.replyTo.stickerId)
+                : null;
 
             return (
               <div key={msg._id}>
@@ -260,17 +302,19 @@ export function MessageThread({
                           >
                             <ReplyIcon className="h-3.5 w-3.5" />
                           </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setEditingMessageId(msg._id);
-                              setEditText(msg.content);
-                            }}
-                            className="rounded p-1 text-text-tertiary hover:bg-surface hover:text-text-primary cursor-pointer"
-                            title="Edit"
-                          >
-                            <EditIcon className="h-3.5 w-3.5" />
-                          </button>
+                          {!isSticker && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingMessageId(msg._id);
+                                setEditText(msg.content);
+                              }}
+                              className="rounded p-1 text-text-tertiary hover:bg-surface hover:text-text-primary cursor-pointer"
+                              title="Edit"
+                            >
+                              <EditIcon className="h-3.5 w-3.5" />
+                            </button>
+                          )}
                           <button
                             type="button"
                             onClick={() => onDeleteMessage(msg._id)}
@@ -282,108 +326,164 @@ export function MessageThread({
                         </div>
                       )}
 
-                      <div
-                        className={`rounded-lg px-3 py-2 text-left text-sm shadow-subtle border ${
-                          msg.deleted
-                            ? "bg-surface/60 border-border text-text-tertiary italic"
-                            : isMine
-                              ? "bg-brand text-brand-text border-brand"
-                              : "bg-surface text-text-primary border-border"
-                        }`}
-                      >
-                        {/* Reply reference */}
-                        {!msg.deleted && msg.replyTo && (
-                          <div
-                            className={`mb-1.5 rounded border-l-2 px-2 py-1 text-[12px] ${
-                              isMine
-                                ? "border-white/60 bg-black/15 text-brand-text/90"
-                                : "border-brand bg-surface-subtle text-text-secondary"
-                            }`}
-                          >
-                            <span className="font-semibold block">
-                              {msg.replyTo.sender?.name || "Team Member"}
-                            </span>
-                            <span className="line-clamp-1">
-                              {msg.replyTo.content}
-                            </span>
-                          </div>
-                        )}
-
-                        {isEditing ? (
-                          <form onSubmit={handleSaveEdit} className="space-y-2 min-w-[220px]">
-                            <textarea
-                              value={editText}
-                              onChange={(e) => setEditText(e.target.value)}
-                              rows={2}
-                              maxLength={4000}
-                              className="w-full rounded border border-border bg-surface p-2 text-sm text-text-primary outline-none focus:border-brand"
-                            />
-                            <div className="flex justify-end gap-1.5">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setEditingMessageId(null);
-                                  setEditText("");
-                                }}
-                                className="rounded bg-surface px-2 py-0.5 text-[12px] font-medium text-text-secondary hover:text-text-primary cursor-pointer"
-                              >
-                                Cancel
-                              </button>
-                              <button
-                                type="submit"
-                                disabled={savingEdit || !editText.trim()}
-                                className="rounded bg-emerald-600 px-2.5 py-0.5 text-[12px] font-medium text-white hover:bg-emerald-700 disabled:opacity-50 cursor-pointer"
-                              >
-                                {savingEdit ? "Saving..." : "Save"}
-                              </button>
-                            </div>
-                          </form>
-                        ) : (
-                          <p className="whitespace-pre-wrap break-words leading-relaxed">
-                            {msg.deleted ? "This message was deleted" : msg.content}
-                          </p>
-                        )}
-
-                        {/* Linked Task preview card */}
-                        {!msg.deleted && msg.task && (
-                          <div
-                            onClick={() => onOpenTask?.(msg.task)}
-                            className={`mt-2 rounded-md border p-2 transition-colors ${
-                              onOpenTask ? "cursor-pointer" : ""
-                            } ${
-                              isMine
-                                ? "border-white/25 bg-black/15 hover:bg-black/25 text-brand-text"
-                                : "border-border bg-surface-subtle hover:bg-surface text-text-primary"
-                            }`}
-                          >
-                            <div className="flex items-center gap-1.5 text-[11px] opacity-80">
-                              <LinkIcon className="h-3 w-3 shrink-0" />
-                              <span>Linked Task</span>
-                            </div>
-                            <p className="mt-0.5 text-[13px] font-semibold truncate">
-                              {msg.task.title}
-                            </p>
-                            <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
-                              <StatusBadge status={msg.task.status} size="xs" />
-                              <PriorityBadge priority={msg.task.priority} size="xs" />
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Timestamp + Edited label */}
+                      {isSticker ? (
+                        /* Frameless WhatsApp-style Sticker Message */
                         <div
-                          className={`mt-1 flex items-center justify-end gap-1.5 text-[10px] ${
-                            msg.deleted
-                              ? "text-text-tertiary"
-                              : isMine
-                                ? "text-brand-text/75"
-                                : "text-text-tertiary"
+                          className={`flex flex-col ${
+                            isMine ? "items-end" : "items-start"
                           }`}
                         >
-                          {msg.editedAt && !msg.deleted && <span>(edited)</span>}
-                          <span>{formatMessageTime(msg.createdAt)}</span>
+                          {msg.replyTo && (
+                            <div
+                              className={`mb-1 max-w-[220px] rounded-md border border-border border-l-2 border-l-brand bg-surface px-2.5 py-1 text-left text-[12px] text-text-secondary shadow-subtle`}
+                            >
+                              <span className="font-semibold text-text-primary block truncate">
+                                {msg.replyTo.sender?.name || "Team Member"}
+                              </span>
+                              {replyStickerUrl ? (
+                                <span className="inline-flex items-center gap-1">
+                                  <img
+                                    src={replyStickerUrl}
+                                    alt="Sticker"
+                                    className="h-4 w-4 object-contain shrink-0"
+                                    draggable={false}
+                                  />
+                                  <span>Sticker</span>
+                                </span>
+                              ) : (
+                                <span className="line-clamp-1">
+                                  {msg.replyTo.content}
+                                </span>
+                              )}
+                            </div>
+                          )}
+
+                          <StickerImage
+                            src={stickerUrl}
+                            alt={stickerMeta?.label || "Sticker"}
+                            className="h-32 w-32 sm:h-36 sm:w-36 object-contain select-none transition-transform duration-150 hover:scale-105"
+                          />
+
+                          <span className="mt-0.5 rounded-full border border-border/70 bg-surface/90 px-2 py-0.5 text-[10px] text-text-tertiary shadow-subtle">
+                            {formatMessageTime(msg.createdAt)}
+                          </span>
                         </div>
-                      </div>
+                      ) : (
+                        <div
+                          className={`rounded-lg px-3 py-2 text-left text-sm shadow-subtle border ${
+                            msg.deleted
+                              ? "bg-surface/60 border-border text-text-tertiary italic"
+                              : isMine
+                                ? "bg-brand text-brand-text border-brand"
+                                : "bg-surface text-text-primary border-border"
+                          }`}
+                        >
+                          {/* Reply reference */}
+                          {!msg.deleted && msg.replyTo && (
+                            <div
+                              className={`mb-1.5 rounded border-l-2 px-2 py-1 text-[12px] ${
+                                isMine
+                                  ? "border-white/60 bg-black/15 text-brand-text/90"
+                                  : "border-brand bg-surface-subtle text-text-secondary"
+                              }`}
+                            >
+                              <span className="font-semibold block">
+                                {msg.replyTo.sender?.name || "Team Member"}
+                              </span>
+                              {replyStickerUrl ? (
+                                <span className="inline-flex items-center gap-1">
+                                  <img
+                                    src={replyStickerUrl}
+                                    alt="Sticker"
+                                    className="h-4 w-4 object-contain shrink-0"
+                                    draggable={false}
+                                  />
+                                  <span>Sticker</span>
+                                </span>
+                              ) : (
+                                <span className="line-clamp-1">
+                                  {msg.replyTo.content}
+                                </span>
+                              )}
+                            </div>
+                          )}
+
+                          {isEditing ? (
+                            <form onSubmit={handleSaveEdit} className="space-y-2 min-w-[220px]">
+                              <textarea
+                                value={editText}
+                                onChange={(e) => setEditText(e.target.value)}
+                                rows={2}
+                                maxLength={4000}
+                                className="w-full rounded border border-border bg-surface p-2 text-sm text-text-primary outline-none focus:border-brand"
+                              />
+                              <div className="flex justify-end gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setEditingMessageId(null);
+                                    setEditText("");
+                                  }}
+                                  className="rounded bg-surface px-2 py-0.5 text-[12px] font-medium text-text-secondary hover:text-text-primary cursor-pointer"
+                                >
+                                  Cancel
+                                </button>
+                                <button
+                                  type="submit"
+                                  disabled={savingEdit || !editText.trim()}
+                                  className="rounded bg-emerald-600 px-2.5 py-0.5 text-[12px] font-medium text-white hover:bg-emerald-700 disabled:opacity-50 cursor-pointer"
+                                >
+                                  {savingEdit ? "Saving..." : "Save"}
+                                </button>
+                              </div>
+                            </form>
+                          ) : (
+                            <p className="whitespace-pre-wrap break-words leading-relaxed">
+                              {msg.deleted ? "This message was deleted" : msg.content}
+                            </p>
+                          )}
+
+                          {/* Linked Task preview card */}
+                          {!msg.deleted && msg.task && (
+                            <div
+                              onClick={() => onOpenTask?.(msg.task)}
+                              className={`mt-2 rounded-md border p-2 transition-colors ${
+                                onOpenTask ? "cursor-pointer" : ""
+                              } ${
+                                isMine
+                                  ? "border-white/25 bg-black/15 hover:bg-black/25 text-brand-text"
+                                  : "border-border bg-surface-subtle hover:bg-surface text-text-primary"
+                              }`}
+                            >
+                              <div className="flex items-center gap-1.5 text-[11px] opacity-80">
+                                <LinkIcon className="h-3 w-3 shrink-0" />
+                                <span>Linked Task</span>
+                              </div>
+                              <p className="mt-0.5 text-[13px] font-semibold truncate">
+                                {msg.task.title}
+                              </p>
+                              <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
+                                <StatusBadge status={msg.task.status} size="xs" />
+                                <PriorityBadge priority={msg.task.priority} size="xs" />
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Timestamp + Edited label */}
+                          <div
+                            className={`mt-1 flex items-center justify-end gap-1.5 text-[10px] ${
+                              msg.deleted
+                                ? "text-text-tertiary"
+                                : isMine
+                                  ? "text-brand-text/75"
+                                  : "text-text-tertiary"
+                            }`}
+                          >
+                            {msg.editedAt && !msg.deleted && <span>(edited)</span>}
+                            <span>{formatMessageTime(msg.createdAt)}</span>
+                          </div>
+                        </div>
+                      )}
 
                       {/* Hover Actions on right for received messages */}
                       {!isMine && !msg.deleted && (

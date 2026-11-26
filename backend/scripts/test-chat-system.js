@@ -309,6 +309,200 @@ async function runTests() {
     assert.strictEqual(lastBroadcast.event.type, "chat:message_deleted");
   });
 
+  await test("7. sendMessage validates stickers, supports replies, and editMessage rejects stickers", async () => {
+    ChatRepository.getConversationAccess = async (cid) => ({
+      forbidden: false,
+      conversation: { id: cid, type: "direct" },
+      participantIds: [userAId, userBId],
+    });
+    ChatRepository.findMessageById = async (id) => ({
+      id,
+      conversation_id: convId,
+      sender_id: userAId,
+      content: "Original message",
+      message_type: "text",
+      sticker_id: null,
+      deleted_at: null,
+    });
+
+    // Unknown messageType returns 400
+    const reqBadType = {
+      params: { conversationId: convId },
+      user: { userId: userAId, role: "user" },
+      body: { messageType: "gif", content: "nope" },
+    };
+    const resBadType = createMockRes();
+    await chatController.sendMessage(reqBadType, resBadType);
+    assert.strictEqual(resBadType.statusCode, 400);
+
+    // Unknown stickerId returns 400
+    const reqBadSticker = {
+      params: { conversationId: convId },
+      user: { userId: userAId, role: "user" },
+      body: { messageType: "sticker", stickerId: "work/not-a-real-sticker" },
+    };
+    const resBadSticker = createMockRes();
+    await chatController.sendMessage(reqBadSticker, resBadSticker);
+    assert.strictEqual(resBadSticker.statusCode, 400);
+
+    // Valid sticker succeeds with empty content and broadcasts chat:message
+    let capturedCreateArgs = null;
+    ChatRepository.createMessage = async (args) => {
+      capturedCreateArgs = args;
+      return {
+        _id: msgId,
+        conversationId: args.conversationId,
+        sender: { _id: args.senderId, name: "Alice" },
+        content: args.content,
+        messageType: args.messageType,
+        stickerId: args.stickerId,
+        replyTo: args.replyToId ? { _id: args.replyToId, content: "Original message" } : null,
+        createdAt: new Date(),
+      };
+    };
+
+    lastBroadcast = null;
+    const reqStickerOk = {
+      params: { conversationId: convId },
+      user: { userId: userAId, role: "user" },
+      body: {
+        messageType: "sticker",
+        stickerId: "work/ship-it",
+        replyToId: msgId,
+      },
+    };
+    const resStickerOk = createMockRes();
+    await chatController.sendMessage(reqStickerOk, resStickerOk);
+    assert.strictEqual(resStickerOk.statusCode, 201);
+    assert.strictEqual(capturedCreateArgs.messageType, "sticker");
+    assert.strictEqual(capturedCreateArgs.stickerId, "work/ship-it");
+    assert.strictEqual(capturedCreateArgs.content, "");
+    assert.strictEqual(resStickerOk.data.message.messageType, "sticker");
+    assert.strictEqual(resStickerOk.data.message.stickerId, "work/ship-it");
+    assert.strictEqual(lastBroadcast.event.type, "chat:message");
+
+    // Editing a sticker message is rejected with 400
+    ChatRepository.findMessageById = async () => ({
+      id: msgId,
+      conversation_id: convId,
+      sender_id: userAId,
+      content: "",
+      message_type: "sticker",
+      sticker_id: "work/ship-it",
+      deleted_at: null,
+    });
+
+    const reqEditSticker = {
+      params: { messageId: msgId },
+      user: { userId: userAId, role: "user" },
+      body: { content: "Try editing sticker" },
+    };
+    const resEditSticker = createMockRes();
+    await chatController.editMessage(reqEditSticker, resEditSticker);
+    assert.strictEqual(resEditSticker.statusCode, 400);
+  });
+
+  await test("8. custom stickers support upload validation, sending, and uploader/superadmin delete", async () => {
+    const customId = new mongoose.Types.ObjectId().toString();
+    // Minimal valid 1x1 transparent PNG
+    const validPngB64 =
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+    const validDataUrl = `data:image/png;base64,${validPngB64}`;
+
+    // Reject spoofed/non-image content
+    const reqBadMagic = {
+      user: { userId: userAId, role: "user" },
+      body: {
+        label: "Fake",
+        dataUrl: `data:image/png;base64,${Buffer.from("<script>alert(1)</script>").toString("base64")}`,
+      },
+    };
+    const resBadMagic = createMockRes();
+    await chatController.uploadCustomSticker(reqBadMagic, resBadMagic);
+    assert.strictEqual(resBadMagic.statusCode, 400);
+
+    // Valid upload succeeds and broadcasts chat:custom_sticker_added
+    ChatRepository.countCustomStickers = async () => 2;
+    ChatRepository.createCustomSticker = async ({ label, mimeType, sizeBytes, uploadedBy }) => ({
+      _id: customId,
+      id: `custom/${customId}`,
+      label,
+      mimeType,
+      sizeBytes,
+      packId: "custom",
+      packName: "Custom",
+      url: `/api/chat/stickers/custom/${customId}/image`,
+      uploadedBy: { _id: uploadedBy, name: "Alice" },
+      createdAt: new Date(),
+    });
+
+    lastBroadcast = null;
+    const reqUploadOk = {
+      user: { userId: userAId, role: "user" },
+      body: { label: "Team Logo", dataUrl: validDataUrl },
+    };
+    const resUploadOk = createMockRes();
+    await chatController.uploadCustomSticker(reqUploadOk, resUploadOk);
+    assert.strictEqual(resUploadOk.statusCode, 201);
+    assert.strictEqual(resUploadOk.data.sticker.id, `custom/${customId}`);
+    assert.strictEqual(lastBroadcast.event.type, "chat:custom_sticker_added");
+
+    // Sending a custom sticker checks customStickerExists
+    ChatRepository.getConversationAccess = async (cid) => ({
+      forbidden: false,
+      conversation: { id: cid, type: "direct" },
+      participantIds: [userAId, userBId],
+    });
+    ChatRepository.customStickerExists = async (id) => id === customId;
+    ChatRepository.createMessage = async (args) => ({
+      _id: msgId,
+      conversationId: args.conversationId,
+      sender: { _id: args.senderId, name: "Alice" },
+      content: "",
+      messageType: args.messageType,
+      stickerId: args.stickerId,
+      createdAt: new Date(),
+    });
+
+    const reqSendCustom = {
+      params: { conversationId: convId },
+      user: { userId: userAId, role: "user" },
+      body: { messageType: "sticker", stickerId: `custom/${customId}` },
+    };
+    const resSendCustom = createMockRes();
+    await chatController.sendMessage(reqSendCustom, resSendCustom);
+    assert.strictEqual(resSendCustom.statusCode, 201);
+    assert.strictEqual(resSendCustom.data.message.stickerId, `custom/${customId}`);
+
+    // Another regular user cannot delete Alice's custom sticker
+    ChatRepository.findCustomStickerById = async () => ({
+      id: customId,
+      uploaded_by: userAId,
+      mime_type: "image/png",
+      image_data: validPngB64,
+    });
+    ChatRepository.deleteCustomSticker = async () => true;
+
+    const reqOtherDel = {
+      params: { stickerId: customId },
+      user: { userId: userBId, role: "user" },
+    };
+    const resOtherDel = createMockRes();
+    await chatController.deleteCustomSticker(reqOtherDel, resOtherDel);
+    assert.strictEqual(resOtherDel.statusCode, 403);
+
+    // SuperAdmin can delete any custom sticker
+    lastBroadcast = null;
+    const reqSuperDel = {
+      params: { stickerId: customId },
+      user: { userId: superAdminId, role: "superadmin" },
+    };
+    const resSuperDel = createMockRes();
+    await chatController.deleteCustomSticker(reqSuperDel, resSuperDel);
+    assert.strictEqual(resSuperDel.statusCode, 200);
+    assert.strictEqual(lastBroadcast.event.type, "chat:custom_sticker_deleted");
+  });
+
   // Restore originals
   Object.assign(ChatRepository, origRepo);
   chatBroker.broadcastToUsers = origBroadcast;

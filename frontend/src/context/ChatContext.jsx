@@ -57,6 +57,7 @@ export function ChatProvider({ children }) {
   const [onlineIds, setOnlineIds] = useState([]);
   const [wsConnected, setWsConnected] = useState(false);
   const [typingByConv, setTypingByConv] = useState({});
+  const [customStickers, setCustomStickers] = useState([]);
 
   const wsRef = useRef(null);
   const activeConvRef = useRef(null);
@@ -119,6 +120,39 @@ export function ChatProvider({ children }) {
       return [];
     }
   }, [currentUserId]);
+
+  const loadCustomStickers = useCallback(async () => {
+    if (!currentUserId) return [];
+    try {
+      const res = await api.get("/chat/stickers/custom");
+      const list = Array.isArray(res.data?.stickers) ? res.data.stickers : [];
+      setCustomStickers(list);
+      return list;
+    } catch (err) {
+      console.error("[Chat] Load custom stickers failed:", err);
+      return [];
+    }
+  }, [currentUserId]);
+
+  const uploadCustomSticker = useCallback(async ({ label, dataUrl }) => {
+    const res = await api.post("/chat/stickers/custom", { label, dataUrl });
+    const sticker = res.data?.sticker;
+    if (sticker) {
+      setCustomStickers((prev) => [
+        sticker,
+        ...prev.filter((s) => s.id !== sticker.id),
+      ]);
+    }
+    return sticker;
+  }, []);
+
+  const deleteCustomSticker = useCallback(async (fullOrRawId) => {
+    const rawId = String(fullOrRawId || "").replace(/^custom\//, "");
+    if (!rawId) return;
+    await api.delete(`/chat/stickers/custom/${rawId}`);
+    const fullId = `custom/${rawId}`;
+    setCustomStickers((prev) => prev.filter((s) => s.id !== fullId));
+  }, []);
 
   const markConversationRead = useCallback(async (conversationId) => {
     if (!conversationId) return;
@@ -202,6 +236,19 @@ export function ChatProvider({ children }) {
       return;
     }
 
+    if (event.type === "chat:custom_sticker_added" && event.sticker) {
+      setCustomStickers((prev) => [
+        event.sticker,
+        ...prev.filter((s) => s.id !== event.sticker.id),
+      ]);
+      return;
+    }
+
+    if (event.type === "chat:custom_sticker_deleted" && event.stickerId) {
+      setCustomStickers((prev) => prev.filter((s) => s.id !== event.stickerId));
+      return;
+    }
+
     if (event.type === "chat:message" && event.message) {
       const cid = String(event.conversationId || event.message.conversationId);
       const msg = event.message;
@@ -231,7 +278,8 @@ export function ChatProvider({ children }) {
             return {
               ...c,
               lastMessageAt: msg.createdAt,
-              lastMessagePreview: msg.content,
+              lastMessagePreview:
+                msg.messageType === "sticker" ? "Sticker" : msg.content,
               unreadCount:
                 isMine || isViewing ? 0 : Number(c.unreadCount || 0) + 1,
             };
@@ -321,6 +369,7 @@ export function ChatProvider({ children }) {
       setConversations([]);
       setMessagesByConv({});
       setOnlineIds([]);
+      setCustomStickers([]);
       setWsConnected(false);
       return undefined;
     }
@@ -332,6 +381,7 @@ export function ChatProvider({ children }) {
     let hadDisconnected = false;
 
     void loadConversations();
+    void loadCustomStickers();
 
     const connectSocket = async () => {
       if (disposed) return;
@@ -435,7 +485,7 @@ export function ChatProvider({ children }) {
         wsRef.current = null;
       }
     };
-  }, [currentUserId, loadConversations, loadMessages]);
+  }, [currentUserId, loadConversations, loadCustomStickers, loadMessages]);
 
   const openDirectChat = useCallback(async (recipientId) => {
     const res = await api.post("/chat/conversations/direct", { recipientId });
@@ -481,14 +531,38 @@ export function ChatProvider({ children }) {
   }, []);
 
   const sendMessage = useCallback(
-    async (conversationId, { content, taskId = null, replyToId = null }) => {
-      const res = await api.post(`/chat/conversations/${conversationId}/messages`, {
-        content,
-        ...(taskId ? { taskId } : {}),
-        ...(replyToId ? { replyToId } : {}),
-      });
+    async (
+      conversationId,
+      {
+        content = "",
+        messageType = "text",
+        stickerId = null,
+        taskId = null,
+        replyToId = null,
+      },
+    ) => {
+      const payload =
+        messageType === "sticker"
+          ? {
+              messageType: "sticker",
+              stickerId,
+              ...(taskId ? { taskId } : {}),
+              ...(replyToId ? { replyToId } : {}),
+            }
+          : {
+              messageType: "text",
+              content,
+              ...(taskId ? { taskId } : {}),
+              ...(replyToId ? { replyToId } : {}),
+            };
+
+      const res = await api.post(
+        `/chat/conversations/${conversationId}/messages`,
+        payload,
+      );
       const msg = res.data?.message;
       if (msg) {
+        const preview = msg.messageType === "sticker" ? "Sticker" : msg.content;
         setMessagesByConv((prev) => ({
           ...prev,
           [conversationId]: mergeMessagesAscending(prev[conversationId] || [], [msg]),
@@ -499,7 +573,7 @@ export function ChatProvider({ children }) {
               ? {
                   ...c,
                   lastMessageAt: msg.createdAt,
-                  lastMessagePreview: msg.content,
+                  lastMessagePreview: preview,
                   unreadCount: 0,
                 }
               : c,
@@ -592,9 +666,13 @@ export function ChatProvider({ children }) {
       onlineIds,
       wsConnected,
       typingByConv,
+      customStickers,
       totalUnread,
       loadConversations,
       loadChatUsers,
+      loadCustomStickers,
+      uploadCustomSticker,
+      deleteCustomSticker,
       loadMessages,
       openDirectChat,
       openProjectChat,
@@ -617,9 +695,13 @@ export function ChatProvider({ children }) {
       onlineIds,
       wsConnected,
       typingByConv,
+      customStickers,
       totalUnread,
       loadConversations,
       loadChatUsers,
+      loadCustomStickers,
+      uploadCustomSticker,
+      deleteCustomSticker,
       loadMessages,
       openDirectChat,
       openProjectChat,

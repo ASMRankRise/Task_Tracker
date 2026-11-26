@@ -33,8 +33,12 @@ export function ChatPage({ user }) {
     onlineIds,
     wsConnected,
     typingByConv,
+    customStickers,
     loadConversations,
     loadChatUsers,
+    loadCustomStickers,
+    uploadCustomSticker,
+    deleteCustomSticker,
     loadMessages,
     openDirectChat,
     openProjectChat,
@@ -58,9 +62,10 @@ export function ChatPage({ user }) {
   useEffect(() => {
     void loadConversations();
     void loadChatUsers();
+    void loadCustomStickers();
     void fetchProjects();
     void fetchTasks();
-  }, [loadConversations, loadChatUsers, fetchProjects, fetchTasks]);
+  }, [loadConversations, loadChatUsers, loadCustomStickers, fetchProjects, fetchTasks]);
 
   // Support deep link /chat?project=<projectId> or /chat/:conversationId
   const projectParam = searchParams.get("project");
@@ -261,6 +266,7 @@ export function ChatPage({ user }) {
             currentUser={effectiveUser}
             onlineIds={onlineIds}
             typingUsers={activeTypingUsers}
+            customStickers={customStickers}
             onLoadOlder={handleLoadOlder}
             onReply={(msg) => setReplyTo(msg)}
             onEditMessage={handleEditMessage}
@@ -275,6 +281,10 @@ export function ChatPage({ user }) {
             replyTo={replyTo}
             onCancelReply={() => setReplyTo(null)}
             tasks={taskState.allTasks}
+            customStickers={customStickers}
+            currentUser={effectiveUser}
+            onUploadSticker={uploadCustomSticker}
+            onDeleteSticker={deleteCustomSticker}
             onSendMessage={(payload) =>
               sendMessage(activeConversation._id, payload)
             }
