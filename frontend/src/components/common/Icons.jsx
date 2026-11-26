@@ -308,6 +308,35 @@ export function Icon({
     moon: (
       <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />
     ),
+    messageSquare: (
+      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+    ),
+    send: (
+      <>
+        <path d="m22 2-7 20-4-9-9-4Z" />
+        <path d="M22 2 11 13" />
+      </>
+    ),
+    hash: (
+      <>
+        <line x1="4" x2="20" y1="9" y2="9" />
+        <line x1="4" x2="20" y1="15" y2="15" />
+        <line x1="10" x2="8" y1="3" y2="21" />
+        <line x1="16" x2="14" y1="3" y2="21" />
+      </>
+    ),
+    reply: (
+      <>
+        <polyline points="9 17 4 12 9 7" />
+        <path d="M20 18v-2a4 4 0 0 0-4-4H4" />
+      </>
+    ),
+    link: (
+      <>
+        <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+        <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+      </>
+    ),
   };
 
   const content = icons[name] || icons.sparkles;
@@ -382,5 +411,10 @@ export const BadgeCheckIcon = (props) => <Icon name="badgeCheck" {...props} />;
 export const FileTextIcon = (props) => <Icon name="fileText" {...props} />;
 export const SunIcon = (props) => <Icon name="sun" {...props} />;
 export const MoonIcon = (props) => <Icon name="moon" {...props} />;
+export const MessageSquareIcon = (props) => <Icon name="messageSquare" {...props} />;
+export const SendIcon = (props) => <Icon name="send" {...props} />;
+export const HashIcon = (props) => <Icon name="hash" {...props} />;
+export const ReplyIcon = (props) => <Icon name="reply" {...props} />;
+export const LinkIcon = (props) => <Icon name="link" {...props} />;
 
 export default Icon;

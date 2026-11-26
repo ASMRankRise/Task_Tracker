@@ -1,12 +1,14 @@
 import { NavLink, useNavigate } from "react-router-dom";
 import { Avatar } from "../common/Avatar";
 import { RoleBadge } from "../common/Badge";
+import { useChat } from "../../hooks/useChat";
 import {
   BriefcaseIcon,
   LayoutDashboardIcon,
   FolderIcon,
   CheckSquareIcon,
   FileTextIcon,
+  MessageSquareIcon,
   UsersIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -25,6 +27,7 @@ export function Sidebar({
   onOpenSettings,
 }) {
   const navigate = useNavigate();
+  const { totalUnread } = useChat();
   const isAdmin = user?.role === "admin" || user?.role === "superadmin";
   const isSuperAdmin = user?.role === "superadmin";
   const navigationItems = [
@@ -54,6 +57,12 @@ export function Sidebar({
           to: "/tasks",
           label: "Tasks",
           icon: CheckSquareIcon,
+        },
+        {
+          to: "/chat",
+          label: "Messages",
+          icon: MessageSquareIcon,
+          badge: totalUnread,
         },
         {
           to: "/reports",
@@ -145,7 +154,7 @@ export function Sidebar({
                     to={item.to}
                     onClick={handleNavClick}
                     className={({ isActive }) =>
-                      `flex items-center gap-2.5 rounded-md px-3 py-2 text-[13px] font-medium transition-colors ${isActive
+                      `relative flex items-center gap-2.5 rounded-md px-3 py-2 text-[13px] font-medium transition-colors ${isActive
                         ? "bg-surface-subtle text-text-primary font-semibold border border-border shadow-subtle"
                         : "text-text-secondary hover:bg-surface-subtle/70 hover:text-text-primary"
                       } ${collapsed ? "justify-center px-0" : ""}`
@@ -153,7 +162,19 @@ export function Sidebar({
                     title={collapsed ? item.label : undefined}
                   >
                     <IconComponent className="h-4 w-4 shrink-0 text-text-tertiary" />
-                    {!collapsed && <span className="truncate">{item.label}</span>}
+                    {!collapsed && (
+                      <span className="flex flex-1 items-center justify-between gap-2 min-w-0">
+                        <span className="truncate">{item.label}</span>
+                        {item.badge > 0 && (
+                          <span className="inline-flex min-w-[18px] h-[18px] items-center justify-center rounded-full bg-brand px-1.5 text-[11px] font-semibold text-brand-text shrink-0">
+                            {item.badge > 99 ? "99+" : item.badge}
+                          </span>
+                        )}
+                      </span>
+                    )}
+                    {collapsed && item.badge > 0 && (
+                      <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-brand" />
+                    )}
                   </NavLink>
                 );
               })}

@@ -2,6 +2,7 @@ const { spawnSync } = require("child_process");
 
 const suites = [
   "run-complete-audit-suite.js",
+  "test-chat-system.js",
   "test-task-fixes.js",
   "test-task-history-caching.js",
   "test-task-priority-status-permissions.js",

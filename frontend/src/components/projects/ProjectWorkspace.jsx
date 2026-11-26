@@ -1,5 +1,6 @@
 
 import { useState, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import { Avatar, AvatarGroup } from "../common/Avatar";
 import Button from "../common/Button";
 import {
@@ -11,6 +12,7 @@ import {
   UserPlusIcon,
   PlusIcon,
   UsersIcon,
+  MessageSquareIcon,
 } from "../common/Icons";
 import KanbanBoard from "../tasks/KanbanBoard";
 import CreateTaskModal from "../tasks/CreateTaskModal";
@@ -38,6 +40,7 @@ export function ProjectWorkspace({
   onRemoveProjectHead,
   onRefresh,
 }) {
+  const navigate = useNavigate();
   const { success, error: toastError } = useToast();
   const [activeTab, setActiveTab] = useState("tasks");
   const [taskViewMode, setTaskViewMode] = useState("board");
@@ -227,6 +230,15 @@ export function ProjectWorkspace({
         </button>
 
         <div className="flex items-center gap-2.5">
+          <Button
+            variant="secondary"
+            size="md"
+            icon={MessageSquareIcon}
+            onClick={() => navigate(`/chat?project=${pId}`)}
+          >
+            Chat
+          </Button>
+
           {canManageProject && (
             <Button
               variant="secondary"
