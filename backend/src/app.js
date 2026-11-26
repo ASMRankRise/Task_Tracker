@@ -41,6 +41,8 @@ app.use(
   }),
 );
 
+// Allow larger JSON payloads specifically for custom sticker uploads (max 200KB binary -> ~275KB base64)
+app.use("/api/chat/stickers/custom", express.json({ limit: "350kb" }));
 app.use(express.json({ limit: "50kb" }));
 app.use(cookieParser());
 

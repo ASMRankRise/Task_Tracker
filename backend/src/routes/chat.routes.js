@@ -13,6 +13,10 @@ const {
   markAsRead,
   editMessage,
   deleteMessage,
+  listCustomStickers,
+  uploadCustomSticker,
+  getCustomStickerImage,
+  deleteCustomSticker,
 } = require("../controllers/chat.controller");
 
 const router = express.Router();
@@ -58,5 +62,10 @@ router.post("/conversations/:conversationId/read", markAsRead);
 
 router.patch("/messages/:messageId", editMessage);
 router.delete("/messages/:messageId", deleteMessage);
+
+router.get("/stickers/custom", listCustomStickers);
+router.post("/stickers/custom", chatMessageRateLimit, uploadCustomSticker);
+router.get("/stickers/custom/:stickerId/image", getCustomStickerImage);
+router.delete("/stickers/custom/:stickerId", deleteCustomSticker);
 
 module.exports = router;

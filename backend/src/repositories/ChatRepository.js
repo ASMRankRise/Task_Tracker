@@ -39,6 +39,8 @@ const SCHEMA_STATEMENTS = [
     conversation_id TEXT NOT NULL,
     sender_id TEXT NOT NULL,
     content TEXT NOT NULL CHECK(length(content) <= 4000),
+    message_type TEXT NOT NULL DEFAULT 'text' CHECK(message_type IN ('text', 'sticker')),
+    sticker_id TEXT,
     task_id TEXT,
     reply_to_id TEXT,
     edited_at TEXT,
@@ -50,9 +52,20 @@ const SCHEMA_STATEMENTS = [
     FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE SET NULL,
     FOREIGN KEY (reply_to_id) REFERENCES chat_messages(id) ON DELETE SET NULL
   )`,
+  `CREATE TABLE IF NOT EXISTS custom_stickers (
+    id TEXT PRIMARY KEY,
+    label TEXT NOT NULL CHECK(length(label) >= 1 AND length(label) <= 40),
+    mime_type TEXT NOT NULL CHECK(mime_type IN ('image/webp', 'image/png', 'image/gif')),
+    image_data TEXT NOT NULL,
+    size_bytes INTEGER NOT NULL,
+    uploaded_by TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (uploaded_by) REFERENCES users(id) ON DELETE CASCADE
+  )`,
   `CREATE INDEX IF NOT EXISTS idx_conversations_last_msg ON conversations(last_message_at DESC)`,
   `CREATE INDEX IF NOT EXISTS idx_conv_participants_user ON conversation_participants(user_id)`,
   `CREATE INDEX IF NOT EXISTS idx_chat_messages_conv_created ON chat_messages(conversation_id, created_at DESC)`,
+  `CREATE INDEX IF NOT EXISTS idx_custom_stickers_created ON custom_stickers(created_at DESC)`,
 ];
 
 /**
@@ -62,6 +75,29 @@ const ensureChatSchema = async () => {
   const db = getDatabase();
   if (initializedDb === db) return db;
   await db.batch(SCHEMA_STATEMENTS.map((sql) => db.prepare(sql)));
+
+  // Backfill sticker columns on existing databases where 0003 hasn't been applied yet
+  const { results: columns = [] } = await db
+    .prepare("PRAGMA table_info(chat_messages)")
+    .all();
+  const colNames = new Set(columns.map((c) => c.name));
+  const alterStatements = [];
+  if (!colNames.has("message_type")) {
+    alterStatements.push(
+      db.prepare(
+        `ALTER TABLE chat_messages ADD COLUMN message_type TEXT NOT NULL DEFAULT 'text' CHECK(message_type IN ('text', 'sticker'))`,
+      ),
+    );
+  }
+  if (!colNames.has("sticker_id")) {
+    alterStatements.push(
+      db.prepare(`ALTER TABLE chat_messages ADD COLUMN sticker_id TEXT`),
+    );
+  }
+  if (alterStatements.length > 0) {
+    await db.batch(alterStatements);
+  }
+
   initializedDb = db;
   return db;
 };
@@ -168,7 +204,7 @@ const hydrateMessages = async (db, rows) => {
     uniqueReplyIds.length
       ? db
           .prepare(
-            `SELECT id, sender_id, content, deleted_at
+            `SELECT id, sender_id, content, message_type, sticker_id, deleted_at
              FROM chat_messages WHERE id IN (${placeholders(uniqueReplyIds)})`,
           )
           .bind(...uniqueReplyIds)
@@ -206,12 +242,20 @@ const hydrateMessages = async (db, rows) => {
   const replyMap = new Map(
     replyRows.map((r) => {
       const sender = usersMap.get(String(r.sender_id));
+      const replyType = r.message_type || "text";
+      const isReplyDeleted = Boolean(r.deleted_at);
       return [
         String(r.id),
         {
           _id: String(r.id),
-          content: r.deleted_at ? "This message was deleted" : r.content,
-          deleted: Boolean(r.deleted_at),
+          content: isReplyDeleted
+            ? "This message was deleted"
+            : replyType === "sticker"
+              ? "Sticker"
+              : r.content,
+          messageType: replyType,
+          stickerId: isReplyDeleted ? null : r.sticker_id || null,
+          deleted: isReplyDeleted,
           sender: sender
             ? { _id: String(sender._id), name: sender.name }
             : { _id: String(r.sender_id), name: "Team Member" },
@@ -223,6 +267,7 @@ const hydrateMessages = async (db, rows) => {
   return rows.map((row) => {
     const sender = usersMap.get(String(row.sender_id));
     const isDeleted = Boolean(row.deleted_at);
+    const messageType = row.message_type || "text";
     return {
       _id: String(row.id),
       conversationId: String(row.conversation_id),
@@ -230,6 +275,8 @@ const hydrateMessages = async (db, rows) => {
         ? { _id: String(sender._id), name: sender.name, role: sender.role }
         : { _id: String(row.sender_id), name: "Team Member", role: "user" },
       content: isDeleted ? "" : row.content,
+      messageType,
+      stickerId: isDeleted ? null : row.sticker_id || null,
       deleted: isDeleted,
       deletedAt: toDate(row.deleted_at),
       editedAt: toDate(row.edited_at),
@@ -669,27 +716,41 @@ const ChatRepository = {
     return { messages, hasMore };
   },
 
-  async createMessage({ conversationId, senderId, content, taskId = null, replyToId = null }) {
+  async createMessage({
+    conversationId,
+    senderId,
+    content = "",
+    messageType = "text",
+    stickerId = null,
+    taskId = null,
+    replyToId = null,
+  }) {
     const db = await ensureChatSchema();
     const msgId = createId();
     const cid = String(conversationId);
     const sid = String(senderId);
     const ts = nowIso();
-    const preview = truncatePreview(content);
+    const normalizedType = messageType === "sticker" ? "sticker" : "text";
+    const storedContent = normalizedType === "sticker" ? "" : content;
+    const storedStickerId = normalizedType === "sticker" ? String(stickerId) : null;
+    const preview =
+      normalizedType === "sticker" ? "Sticker" : truncatePreview(storedContent);
 
     await db.batch([
       db
         .prepare(
           `INSERT INTO chat_messages (
-             id, conversation_id, sender_id, content, task_id, reply_to_id,
-             edited_at, deleted_at, created_at, updated_at
-           ) VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?)`,
+             id, conversation_id, sender_id, content, message_type, sticker_id,
+             task_id, reply_to_id, edited_at, deleted_at, created_at, updated_at
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?)`,
         )
         .bind(
           msgId,
           cid,
           sid,
-          content,
+          storedContent,
+          normalizedType,
+          storedStickerId,
           taskId ? String(idOf(taskId)) : null,
           replyToId ? String(idOf(replyToId)) : null,
           ts,
@@ -836,6 +897,107 @@ const ChatRepository = {
       }
     }
     return { totalUnread, byConversation };
+  },
+
+  async listCustomStickers() {
+    const db = await ensureChatSchema();
+    const { results = [] } = await db
+      .prepare(
+        `SELECT id, label, mime_type, size_bytes, uploaded_by, created_at
+         FROM custom_stickers
+         ORDER BY created_at DESC`,
+      )
+      .all();
+
+    const uploaderIds = results.map((r) => r.uploaded_by).filter(Boolean);
+    const usersMap = await getUsersByIds(uploaderIds);
+
+    return results.map((row) => {
+      const uploader = usersMap.get(String(row.uploaded_by));
+      return {
+        _id: String(row.id),
+        id: `custom/${row.id}`,
+        label: row.label,
+        mimeType: row.mime_type,
+        sizeBytes: Number(row.size_bytes || 0),
+        packId: "custom",
+        packName: "Custom",
+        url: `/api/chat/stickers/custom/${row.id}/image`,
+        uploadedBy: uploader
+          ? { _id: String(uploader._id), name: uploader.name }
+          : { _id: String(row.uploaded_by), name: "Team Member" },
+        createdAt: toDate(row.created_at),
+      };
+    });
+  },
+
+  async countCustomStickers() {
+    const db = await ensureChatSchema();
+    const row = await db
+      .prepare("SELECT COUNT(*) AS count FROM custom_stickers")
+      .first();
+    return Number(row?.count || 0);
+  },
+
+  async createCustomSticker({ label, mimeType, imageData, sizeBytes, uploadedBy }) {
+    const db = await ensureChatSchema();
+    const id = createId();
+    const ts = nowIso();
+    const uid = String(uploadedBy);
+
+    await db
+      .prepare(
+        `INSERT INTO custom_stickers (
+           id, label, mime_type, image_data, size_bytes, uploaded_by, created_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .bind(id, label, mimeType, imageData, Number(sizeBytes), uid, ts)
+      .run();
+
+    const uploader = await this.findUserById(uid);
+    return {
+      _id: id,
+      id: `custom/${id}`,
+      label,
+      mimeType,
+      sizeBytes: Number(sizeBytes),
+      packId: "custom",
+      packName: "Custom",
+      url: `/api/chat/stickers/custom/${id}/image`,
+      uploadedBy: uploader
+        ? { _id: uploader._id, name: uploader.name }
+        : { _id: uid, name: "Team Member" },
+      createdAt: toDate(ts),
+    };
+  },
+
+  async findCustomStickerById(stickerId) {
+    const db = await ensureChatSchema();
+    return db
+      .prepare(
+        `SELECT id, label, mime_type, image_data, size_bytes, uploaded_by, created_at
+         FROM custom_stickers WHERE id = ? LIMIT 1`,
+      )
+      .bind(String(stickerId))
+      .first();
+  },
+
+  async customStickerExists(stickerId) {
+    const db = await ensureChatSchema();
+    const row = await db
+      .prepare("SELECT id FROM custom_stickers WHERE id = ? LIMIT 1")
+      .bind(String(stickerId))
+      .first();
+    return Boolean(row);
+  },
+
+  async deleteCustomSticker(stickerId) {
+    const db = await ensureChatSchema();
+    await db
+      .prepare("DELETE FROM custom_stickers WHERE id = ?")
+      .bind(String(stickerId))
+      .run();
+    return true;
   },
 };
 
