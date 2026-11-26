@@ -22,6 +22,7 @@ export function UserDashboard({ user }) {
   const [dashboardLoading, setDashboardLoading] = useState(true);
   const [dashboardError, setDashboardError] = useState("");
   const [viewMode, setViewMode] = useState("kanban");
+  const [taskScope, setTaskScope] = useState("all"); // "all" | "mine"
   const [selectedProjectId, setSelectedProjectId] = useState(null);
   const [selectedTask, setSelectedTask] = useState(null);
 
@@ -130,6 +131,18 @@ export function UserDashboard({ user }) {
   const selectedProject = projects.find(
     (p) => getEntityId(p) === String(selectedProjectId),
   );
+
+  const visibleDeliverables = useMemo(() => {
+    if (taskScope !== "mine" || !userId) return taskState.allTasks;
+    return taskState.allTasks.filter((t) => {
+      const assignees = Array.isArray(t.assignedTo)
+        ? t.assignedTo
+        : t.assignedTo
+          ? [t.assignedTo]
+          : [];
+      return assignees.some((u) => getEntityId(u) === userId);
+    });
+  }, [taskState.allTasks, taskScope, userId]);
 
   return (
     <div className="space-y-5">
@@ -370,41 +383,55 @@ export function UserDashboard({ user }) {
               <div>
                 <h3 className="text-sm font-semibold text-slate-900 dark:text-white flex items-center gap-2">
                   <CheckSquareIcon className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-                  <span>My Assigned Deliverables</span>
+                  <span>
+                    {taskScope === "mine" ? "My Assigned Deliverables" : "Project Deliverables"}
+                  </span>
                 </h3>
                 <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-                  Switch between Kanban Board and Table View
+                  Switch between project tasks or filter to tasks assigned to you
                 </p>
               </div>
 
-              {/* View Switcher Tabs */}
-              <div className="inline-flex rounded-md border border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 p-0.5 text-xs">
-                <button
-                  type="button"
-                  onClick={() => setViewMode("kanban")}
-                  className={`rounded px-3 py-1 font-medium transition ${viewMode === "kanban"
-                    ? "bg-white text-slate-900 shadow-xs dark:bg-[#161B22] dark:text-white"
-                    : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white"
-                    }`}
+              <div className="flex flex-wrap items-center gap-2">
+                <select
+                  aria-label="Filter dashboard deliverables"
+                  value={taskScope}
+                  onChange={(e) => setTaskScope(e.target.value)}
+                  className="h-8 rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-[#161B22] px-2.5 text-xs font-medium text-slate-700 dark:text-slate-300 outline-none cursor-pointer"
                 >
-                  Kanban Board
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setViewMode("table")}
-                  className={`rounded px-3 py-1 font-medium transition ${viewMode === "table"
-                    ? "bg-white text-slate-900 shadow-xs dark:bg-[#161B22] dark:text-white"
-                    : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white"
-                    }`}
-                >
-                  Table View
-                </button>
+                  <option value="all">All project tasks</option>
+                  <option value="mine">Assigned to me</option>
+                </select>
+
+                {/* View Switcher Tabs */}
+                <div className="inline-flex rounded-md border border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 p-0.5 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setViewMode("kanban")}
+                    className={`rounded px-3 py-1 font-medium transition ${viewMode === "kanban"
+                      ? "bg-white text-slate-900 shadow-xs dark:bg-[#161B22] dark:text-white"
+                      : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white"
+                      }`}
+                  >
+                    Kanban Board
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setViewMode("table")}
+                    className={`rounded px-3 py-1 font-medium transition ${viewMode === "table"
+                      ? "bg-white text-slate-900 shadow-xs dark:bg-[#161B22] dark:text-white"
+                      : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white"
+                      }`}
+                  >
+                    Table View
+                  </button>
+                </div>
               </div>
             </div>
 
             {viewMode === "kanban" ? (
               <KanbanBoard
-                tasks={taskState.allTasks}
+                tasks={visibleDeliverables}
                 projects={projects}
                 user={user}
                 onUpdate={handleUpdateTask}
@@ -413,7 +440,7 @@ export function UserDashboard({ user }) {
               />
             ) : (
               <TaskList
-                tasks={taskState.allTasks}
+                tasks={visibleDeliverables}
                 projects={projects}
                 user={user}
                 loading={taskState.loading}

@@ -86,3 +86,56 @@ export function getTaskPermissions(task, project, user) {
     canDeleteTask: canManageTask,
   };
 }
+
+/**
+ * Normalizes task assignees and resolves worker display names for cards, tables, and modals.
+ */
+export function getAssigneeDisplay(task, project) {
+  const rawAssignees = Array.isArray(task?.assignedTo)
+    ? task.assignedTo
+    : task?.assignedTo
+      ? [task.assignedTo]
+      : [];
+
+  const resolvedProject =
+    project || (typeof task?.project === "object" ? task.project : null);
+
+  const projectUserPool = [
+    resolvedProject?.owner,
+    resolvedProject?.projectHead,
+    ...(Array.isArray(resolvedProject?.members) ? resolvedProject.members : []),
+  ].filter((u) => u && typeof u === "object");
+
+  const assignedUsers = rawAssignees
+    .filter(Boolean)
+    .map((u) => {
+      if (typeof u === "object") {
+        if (u.name || u.email) return u;
+        const id = getEntityId(u);
+        return projectUserPool.find((m) => getEntityId(m) === id) || u;
+      }
+      const id = String(u).trim();
+      return (
+        projectUserPool.find((m) => getEntityId(m) === id || m.email === id) || {
+          _id: id,
+          name: "",
+        }
+      );
+    });
+
+  const assigneeNames = assignedUsers
+    .map((u) => u?.name || u?.email || "")
+    .filter(Boolean);
+
+  const shortLabel =
+    assigneeNames.length === 0
+      ? "Unassigned"
+      : assigneeNames.length === 1
+        ? assigneeNames[0]
+        : `${assigneeNames[0]} +${assigneeNames.length - 1}`;
+
+  const fullLabel =
+    assigneeNames.length === 0 ? "Unassigned" : assigneeNames.join(", ");
+
+  return { assignedUsers, assigneeNames, shortLabel, fullLabel };
+}

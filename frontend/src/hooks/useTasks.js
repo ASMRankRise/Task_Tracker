@@ -12,6 +12,7 @@ function useTasks(user, initialOptions = {}) {
   const [statusFilter, setStatusFilterValue] = useState("");
   const [priorityFilter, setPriorityFilterValue] = useState("");
   const [projectFilter, setProjectFilterValue] = useState(initialOptions.projectId || "");
+  const [assigneeFilter, setAssigneeFilterValue] = useState("");
   const [page, setPageValue] = useState(1);
   const [limit, setLimitValue] = useState(initialLimit);
   const [totalPages, setTotalPages] = useState(1);
@@ -50,6 +51,11 @@ function useTasks(user, initialOptions = {}) {
     setPageValue(1);
   };
 
+  const setAssigneeFilter = (value) => {
+    setAssigneeFilterValue(value);
+    setPageValue(1);
+  };
+
   const setLimit = (value) => {
     setLimitValue(value);
     setPageValue(1);
@@ -77,6 +83,9 @@ function useTasks(user, initialOptions = {}) {
     if (statusFilter) params.status = statusFilter;
     if (priorityFilter) params.priority = priorityFilter;
     if (projectFilter) params.project = projectFilter;
+    if (assigneeFilter) {
+      params.assignedTo = assigneeFilter === "me" ? userId : assigneeFilter;
+    }
 
     setLoading(true);
     setError("");
@@ -135,6 +144,7 @@ function useTasks(user, initialOptions = {}) {
     statusFilter,
     priorityFilter,
     projectFilter,
+    assigneeFilter,
   ]);
 
   const createTask = async (payload) => {
@@ -287,6 +297,8 @@ function useTasks(user, initialOptions = {}) {
     setPriorityFilter,
     projectFilter,
     setProjectFilter,
+    assigneeFilter,
+    setAssigneeFilter,
     page,
     setPage,
     limit,

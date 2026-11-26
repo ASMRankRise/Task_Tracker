@@ -33,6 +33,16 @@ const getTaskLabel = (task, fallbackId) => {
 const validStatuses = ["todo", "in-progress", "completed", "testing", "done"];
 const validPriorities = ["low", "medium", "high"];
 
+/** Strip private fields (such as email) while preserving worker display names. */
+const sanitizeAssignees = (assignedTo = []) =>
+  (Array.isArray(assignedTo) ? assignedTo : [])
+    .filter(Boolean)
+    .map((u) =>
+      typeof u === "object"
+        ? { _id: u._id, name: u.name }
+        : { _id: u },
+    );
+
 // CREATE TASK
 
 const createTask = async (req, res) => {
@@ -475,10 +485,7 @@ const getTasks = async (req, res) => {
           priority: taskObj.priority,
           dueDate: taskObj.dueDate,
           project: sanitizedProject,
-          assignedTo: (taskObj.assignedTo || []).map((u) => ({
-            _id: u._id,
-            name: u.name,
-          })),
+          assignedTo: sanitizeAssignees(taskObj.assignedTo),
           createdBy: taskObj.createdBy
             ? {
               _id: taskObj.createdBy._id,
@@ -506,7 +513,7 @@ const getTasks = async (req, res) => {
         priority: taskObj.priority,
         dueDate: taskObj.dueDate,
         project: sanitizedProject,
-        assignedTo: [],
+        assignedTo: sanitizeAssignees(taskObj.assignedTo),
         createdAt: taskObj.createdAt,
         updatedAt: taskObj.updatedAt,
       };
@@ -631,10 +638,7 @@ const getTaskById = async (req, res) => {
         _id: project._id,
         name: project.name,
       },
-      assignedTo: (task.assignedTo || []).map((u) => ({
-        _id: u._id,
-        name: u.name,
-      })),
+      assignedTo: sanitizeAssignees(task.assignedTo),
       createdBy: task.createdBy
         ? {
           _id: task.createdBy._id,

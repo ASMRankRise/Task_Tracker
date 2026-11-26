@@ -4,7 +4,7 @@ import { AvatarGroup } from "../common/Avatar";
 import { CheckSquareIcon, CalendarIcon, TrashIcon } from "../common/Icons";
 import Pagination from "../common/Pagination";
 import { useAuth } from "../../context/AuthContext";
-import { getEntityId, getTaskPermissions } from "../../utils/taskPermissions";
+import { getAssigneeDisplay, getEntityId, getTaskPermissions } from "../../utils/taskPermissions";
 import TaskStatusDropdown from "./TaskStatusDropdown";
 import TaskPriorityDropdown from "./TaskPriorityDropdown";
 
@@ -79,11 +79,10 @@ export function TaskList({
                   canDeleteTask,
                 } = getTaskPermissions(task, proj, effectiveUser);
 
-                const assignedUsers = Array.isArray(task.assignedTo)
-                  ? task.assignedTo
-                  : task.assignedTo
-                  ? [task.assignedTo]
-                  : [];
+                const {
+                  assignedUsers,
+                  fullLabel: allWorkersLabel,
+                } = getAssigneeDisplay(task, proj);
 
                 const isOverdue =
                   task.dueDate &&
@@ -141,8 +140,20 @@ export function TaskList({
                     <td className="px-4 py-3 text-text-secondary text-[13px]">
                       {proj?.name || task.project?.name || "Workspace"}
                     </td>
-                    <td className="px-4 py-3">
-                      <AvatarGroup users={assignedUsers} size="xs" max={2} />
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      {assignedUsers.length > 0 ? (
+                        <div
+                          className="flex items-center gap-2 max-w-[190px]"
+                          title={allWorkersLabel}
+                        >
+                          <AvatarGroup users={assignedUsers} size="xs" max={2} />
+                          <span className="truncate text-[13px] font-medium text-text-primary">
+                            {allWorkersLabel}
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="text-[12px] text-text-tertiary">Unassigned</span>
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       <span
