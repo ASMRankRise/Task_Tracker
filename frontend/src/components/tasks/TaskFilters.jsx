@@ -12,6 +12,8 @@ export function TaskFilters({
   setStatusFilter,
   priorityFilter = "",
   setPriorityFilter,
+  assigneeFilter = "",
+  setAssigneeFilter,
   viewMode = "kanban",
   setViewMode,
 }) {
@@ -64,6 +66,21 @@ export function TaskFilters({
           </select>
         </div>
 
+        {/* Assignee Scope Filter */}
+        {setAssigneeFilter && (
+          <div className="relative">
+            <select
+              value={assigneeFilter}
+              onChange={(e) => setAssigneeFilter(e.target.value)}
+              aria-label="Filter by assignee"
+              className="h-9 rounded-md border border-border bg-surface px-3 py-1 text-[13px] font-medium text-text-secondary outline-none focus:border-brand transition-colors cursor-pointer shadow-subtle"
+            >
+              <option value="">All project tasks</option>
+              <option value="me">Assigned to me</option>
+            </select>
+          </div>
+        )}
+
         {/* View Mode Toggle: Board vs Table vs Grid */}
         {setViewMode && (
           <div className="flex items-center rounded-md border border-border bg-surface-subtle p-0.5 text-[13px]">
@@ -110,13 +127,14 @@ export function TaskFilters({
         )}
 
         {/* Clear Filters Button if any active */}
-        {(statusFilter || priorityFilter || search) && (
+        {(statusFilter || priorityFilter || assigneeFilter || search) && (
           <button
             type="button"
             onClick={() => {
               setSearch?.("");
               setStatusFilter?.("");
               setPriorityFilter?.("");
+              setAssigneeFilter?.("");
             }}
             className="h-9 rounded-md border border-border bg-surface px-3 py-1 text-[13px] font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary transition-colors cursor-pointer"
           >

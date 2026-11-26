@@ -192,6 +192,8 @@ export function TasksPage({ user }) {
         setStatusFilter={taskState.setStatusFilter}
         priorityFilter={taskState.priorityFilter}
         setPriorityFilter={taskState.setPriorityFilter}
+        assigneeFilter={taskState.assigneeFilter}
+        setAssigneeFilter={taskState.setAssigneeFilter}
         viewMode={viewMode}
         setViewMode={handleViewModeChange}
       />
