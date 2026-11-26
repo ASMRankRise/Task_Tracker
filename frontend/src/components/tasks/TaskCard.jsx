@@ -6,7 +6,7 @@ import {
   TrashIcon,
 } from "../common/Icons";
 import { useAuth } from "../../context/AuthContext";
-import { getEntityId, getTaskPermissions } from "../../utils/taskPermissions";
+import { getAssigneeDisplay, getEntityId, getTaskPermissions } from "../../utils/taskPermissions";
 import TaskStatusDropdown from "./TaskStatusDropdown";
 import TaskPriorityDropdown from "./TaskPriorityDropdown";
 
@@ -35,11 +35,11 @@ export function TaskCard({
     canDeleteTask,
   } = getTaskPermissions(task, project, effectiveUser);
 
-  const assignedUsers = Array.isArray(task.assignedTo)
-    ? task.assignedTo
-    : task.assignedTo
-      ? [task.assignedTo]
-      : [];
+  const {
+    assignedUsers,
+    shortLabel: workerLabel,
+    fullLabel: allWorkersLabel,
+  } = getAssigneeDisplay(task, project);
 
   const handleDelete = async (e) => {
     e.stopPropagation();
@@ -188,16 +188,24 @@ export function TaskCard({
       <div className="mt-3 border-t border-border-subtle pt-2.5">
         <div className="flex items-center justify-between gap-2">
           <span
-            className="truncate rounded-md bg-surface-subtle px-2 py-0.5 text-[12px] font-medium text-text-secondary border border-border max-w-[125px]"
+            className="truncate rounded-md bg-surface-subtle px-2 py-0.5 text-[12px] font-medium text-text-secondary border border-border max-w-[115px] shrink-0"
             title={project?.name || task.project?.name}
           >
             {project?.name || task.project?.name || "Workspace"}
           </span>
 
-          {assignedUsers.length > 0 && (
-            <div className="shrink-0">
+          {assignedUsers.length > 0 ? (
+            <div
+              className="flex items-center gap-1.5 min-w-0"
+              title={allWorkersLabel}
+            >
               <AvatarGroup users={assignedUsers} size="xs" max={2} />
+              <span className="truncate text-[12px] font-medium text-text-secondary">
+                {workerLabel}
+              </span>
             </div>
+          ) : (
+            <span className="text-[12px] text-text-tertiary">Unassigned</span>
           )}
         </div>
       </div>

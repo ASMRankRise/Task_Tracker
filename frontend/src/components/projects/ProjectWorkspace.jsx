@@ -20,7 +20,7 @@ import TaskPriorityDropdown from "../tasks/TaskPriorityDropdown";
 import MemberManagementModal from "./MemberManagementModal";
 import { useToast } from "../../context/ToastContext";
 import { useAuth } from "../../context/AuthContext";
-import { getTaskPermissions } from "../../utils/taskPermissions";
+import { getAssigneeDisplay, getTaskPermissions } from "../../utils/taskPermissions";
 
 export function ProjectWorkspace({
   project,
@@ -462,11 +462,10 @@ export function ProjectWorkspace({
 
                 <tbody className="divide-y divide-border-subtle">
                   {projectTasks.map((t) => {
-                    const assignedUsers = Array.isArray(t.assignedTo)
-                      ? t.assignedTo
-                      : t.assignedTo
-                        ? [t.assignedTo]
-                        : [];
+                    const {
+                      assignedUsers,
+                      fullLabel: allWorkersLabel,
+                    } = getAssigneeDisplay(t, project);
 
                     const {
                       canView,
@@ -526,7 +525,19 @@ export function ProjectWorkspace({
                         </td>
 
                         <td className="px-4 py-3 whitespace-nowrap">
-                          <AvatarGroup users={assignedUsers} size="xs" max={3} />
+                          {assignedUsers.length > 0 ? (
+                            <div
+                              className="flex items-center gap-2 max-w-[200px]"
+                              title={allWorkersLabel}
+                            >
+                              <AvatarGroup users={assignedUsers} size="xs" max={3} />
+                              <span className="truncate text-[13px] font-medium text-text-primary">
+                                {allWorkersLabel}
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="text-[12px] text-text-tertiary">Unassigned</span>
+                          )}
                         </td>
 
                         <td className="px-4 py-3 whitespace-nowrap text-[12px] text-text-secondary">

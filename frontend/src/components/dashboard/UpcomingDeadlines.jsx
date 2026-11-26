@@ -1,5 +1,6 @@
 import { StatusBadge, PriorityBadge } from "../common/Badge";
 import { CalendarIcon, AlertTriangleIcon, CheckCircleIcon } from "../common/Icons";
+import { getAssigneeDisplay } from "../../utils/taskPermissions";
 
 export function UpcomingDeadlines({ tasks = [], onTaskClick }) {
   // Filter active tasks that have a valid dueDate
@@ -53,6 +54,11 @@ export function UpcomingDeadlines({ tasks = [], onTaskClick }) {
             const daysDiff = getDaysDiff(task.dueDate);
             const isOverdue = daysDiff < 0;
             const isToday = daysDiff === 0;
+            const {
+              assignedUsers,
+              shortLabel: workerLabel,
+              fullLabel: allWorkersLabel,
+            } = getAssigneeDisplay(task);
 
             return (
               <div
@@ -67,12 +73,23 @@ export function UpcomingDeadlines({ tasks = [], onTaskClick }) {
                     </span>
                     <PriorityBadge priority={task.priority} size="xs" />
                   </div>
-                  <div className="text-[12px] text-text-secondary flex items-center gap-2 mt-0.5">
+                  <div className="text-[12px] text-text-secondary flex items-center gap-2 mt-0.5 flex-wrap">
                     <span className="truncate max-w-[140px]">
                       {task.project?.name || "Workspace"}
                     </span>
                     <span>•</span>
                     <StatusBadge status={task.status} size="xs" />
+                    {assignedUsers.length > 0 && (
+                      <>
+                        <span>•</span>
+                        <span
+                          className="truncate max-w-[140px] font-medium text-text-primary"
+                          title={allWorkersLabel}
+                        >
+                          {workerLabel}
+                        </span>
+                      </>
+                    )}
                   </div>
                 </div>
 

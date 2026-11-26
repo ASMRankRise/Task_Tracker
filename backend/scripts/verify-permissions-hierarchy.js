@@ -820,7 +820,7 @@ async function runAllTests() {
     assert.strictEqual(resUnassigned.statusCode, 403, "Unassigned member cannot view details");
   });
 
-  await testAsync("getTasks sanitizes unassigned tasks for Members (no description, no assignees, no creator)", async () => {
+  await testAsync("getTasks exposes worker names without emails or descriptions on unassigned project tasks", async () => {
     const projId = new mongoose.Types.ObjectId();
     const assignedMemberId = new mongoose.Types.ObjectId().toString();
     const unassignedMemberId = new mongoose.Types.ObjectId().toString();
@@ -890,11 +890,13 @@ async function runAllTests() {
     assert.strictEqual(assignedTask.createdBy.email, undefined, "Creator email must be stripped");
     assert.strictEqual(assignedTask.project.owner, undefined, "Owner ID must be stripped");
 
-    // 2. Task not assigned to member: fully sanitized
+    // 2. Task not assigned to member: description/creator/emails stripped, worker name preserved
     const unassignedTask = returnedTasks[1];
     assert.strictEqual(unassignedTask.title, "Unassigned Peer Task");
     assert.strictEqual(unassignedTask.description, "", "Description must be empty");
-    assert.deepStrictEqual(unassignedTask.assignedTo, [], "Other assignees must not be exposed");
+    assert.strictEqual(unassignedTask.assignedTo.length, 1, "Assigned worker name should be visible on project task");
+    assert.strictEqual(unassignedTask.assignedTo[0].name, "Peer", "Worker display name must be exposed");
+    assert.strictEqual(unassignedTask.assignedTo[0].email, undefined, "Peer assignee email must still be stripped");
     assert.strictEqual(unassignedTask.createdBy, undefined, "Creator must not be exposed");
     assert.strictEqual(unassignedTask.project.owner, undefined, "Owner ID must be stripped");
   });
