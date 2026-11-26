@@ -10,6 +10,14 @@ database_id = "cc0166bb-3ef6-4c48-89f7-233634742b09"
 migrations_dir = "migrations"
 remote = true
 
+[[durable_objects.bindings]]
+name = "CHAT_HUB"
+class_name = "ChatHubDO"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["ChatHubDO"]
+
 [vars]
 NODE_ENV = "production"
 
