@@ -346,6 +346,43 @@ export function Icon({
         <path d="M10 16s.8 1 2 1c1.3 0 2-1 2-1" />
       </>
     ),
+    phone: (
+      <>
+        <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
+      </>
+    ),
+    phoneOff: (
+      <>
+        <path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.42 19.42 0 0 1-3.33-2.67" />
+        <path d="M14.68 14.68a16 16 0 0 1-6-6" />
+        <path d="M4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91" />
+        <line x1="2" x2="22" y1="2" y2="22" />
+      </>
+    ),
+    mic: (
+      <>
+        <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
+        <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+        <line x1="12" x2="12" y1="19" y2="22" />
+      </>
+    ),
+    micOff: (
+      <>
+        <line x1="2" x2="22" y1="2" y2="22" />
+        <path d="M18.89 13.23A7.12 7.12 0 0 0 19 12v-2" />
+        <path d="M5 10v2a7 7 0 0 0 12 5" />
+        <path d="M15 9.34V5a3 3 0 0 0-5.68-1.33" />
+        <path d="M9 9v3a3 3 0 0 0 5.12 2.12" />
+        <line x1="12" x2="12" y1="19" y2="22" />
+      </>
+    ),
+    volume2: (
+      <>
+        <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+        <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+        <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+      </>
+    ),
   };
 
   const content = icons[name] || icons.sparkles;
@@ -426,5 +463,10 @@ export const HashIcon = (props) => <Icon name="hash" {...props} />;
 export const ReplyIcon = (props) => <Icon name="reply" {...props} />;
 export const LinkIcon = (props) => <Icon name="link" {...props} />;
 export const StickerIcon = (props) => <Icon name="sticker" {...props} />;
+export const PhoneIcon = (props) => <Icon name="phone" {...props} />;
+export const PhoneOffIcon = (props) => <Icon name="phoneOff" {...props} />;
+export const MicIcon = (props) => <Icon name="mic" {...props} />;
+export const MicOffIcon = (props) => <Icon name="micOff" {...props} />;
+export const SpeakerIcon = (props) => <Icon name="volume2" {...props} />;
 
 export default Icon;

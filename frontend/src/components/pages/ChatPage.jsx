@@ -4,6 +4,7 @@ import api from "../../services/api";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
 import { useChat } from "../../hooks/useChat";
+import { useCall } from "../../hooks/useCall";
 import useProjects from "../../hooks/useProjects";
 import useTasks from "../../hooks/useTasks";
 import ConversationList from "../chat/ConversationList";
@@ -11,7 +12,7 @@ import MessageThread from "../chat/MessageThread";
 import MessageComposer from "../chat/MessageComposer";
 import NewChatModal from "../chat/NewChatModal";
 import TaskDetailModal from "../tasks/TaskDetailModal";
-import { getEntityId } from "../chat/chatHelpers";
+import { getConversationDisplay, getEntityId } from "../chat/chatHelpers";
 
 export function ChatPage({ user }) {
   const { conversationId: routeConvId } = useParams();
@@ -53,6 +54,7 @@ export function ChatPage({ user }) {
   const { projects, fetchProjects } = useProjects();
   const taskState = useTasks(effectiveUser, { limit: 100 });
   const { fetchTasks } = taskState;
+  const { startCall, callState } = useCall();
 
   const [newChatOpen, setNewChatOpen] = useState(false);
   const [replyTo, setReplyTo] = useState(null);
@@ -159,6 +161,18 @@ export function ChatPage({ user }) {
     () => (activeConversationId ? typingByConv[activeConversationId] || [] : []),
     [typingByConv, activeConversationId],
   );
+
+  const handleStartDirectCall = () => {
+    if (!activeConversation || activeConversation.type !== "direct") return;
+    const { otherParticipant, title } = getConversationDisplay(
+      activeConversation,
+      currentUserId,
+      onlineIds,
+    );
+    const targetId = getEntityId(otherParticipant);
+    if (!targetId) return;
+    void startCall(targetId, otherParticipant?.name || title);
+  };
 
   const handleSelectConversation = (convId) => {
     setActiveConversationId(convId);
@@ -273,6 +287,8 @@ export function ChatPage({ user }) {
             onDeleteMessage={handleDeleteMessage}
             onOpenTask={handleOpenLinkedTask}
             onBackMobile={() => setMobileShowThread(false)}
+            onStartCall={handleStartDirectCall}
+            callBusy={callState !== "idle"}
           />
         </div>
 

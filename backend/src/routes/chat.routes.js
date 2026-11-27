@@ -17,6 +17,7 @@ const {
   uploadCustomSticker,
   getCustomStickerImage,
   deleteCustomSticker,
+  getIceServers,
 } = require("../controllers/chat.controller");
 
 const router = express.Router();
@@ -62,6 +63,8 @@ router.post("/conversations/:conversationId/read", markAsRead);
 
 router.patch("/messages/:messageId", editMessage);
 router.delete("/messages/:messageId", deleteMessage);
+
+router.get("/ice-servers", getIceServers);
 
 router.get("/stickers/custom", listCustomStickers);
 router.post("/stickers/custom", chatMessageRateLimit, uploadCustomSticker);
