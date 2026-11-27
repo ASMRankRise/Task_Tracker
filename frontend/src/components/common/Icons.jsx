@@ -383,6 +383,42 @@ export function Icon({
         <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
       </>
     ),
+    video: (
+      <>
+        <path d="m22 8-6 4 6 4V8Z" />
+        <rect width="14" height="12" x="2" y="6" rx="2" ry="2" />
+      </>
+    ),
+    videoOff: (
+      <>
+        <path d="M10.66 6H14a2 2 0 0 1 2 2v2.34l1 1L22 8v8" />
+        <path d="M16 16a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h2l10 10Z" />
+        <line x1="2" x2="22" y1="2" y2="22" />
+      </>
+    ),
+    monitor: (
+      <>
+        <rect width="20" height="14" x="2" y="3" rx="2" />
+        <line x1="8" x2="16" y1="21" y2="21" />
+        <line x1="12" x2="12" y1="17" y2="21" />
+      </>
+    ),
+    maximize2: (
+      <>
+        <polyline points="15 3 21 3 21 9" />
+        <polyline points="9 21 3 21 3 15" />
+        <line x1="21" x2="14" y1="3" y2="10" />
+        <line x1="3" x2="10" y1="21" y2="14" />
+      </>
+    ),
+    minimize2: (
+      <>
+        <polyline points="4 14 10 14 10 20" />
+        <polyline points="20 10 14 10 14 4" />
+        <line x1="14" x2="21" y1="10" y2="3" />
+        <line x1="3" x2="10" y1="21" y2="14" />
+      </>
+    ),
   };
 
   const content = icons[name] || icons.sparkles;
@@ -468,5 +504,10 @@ export const PhoneOffIcon = (props) => <Icon name="phoneOff" {...props} />;
 export const MicIcon = (props) => <Icon name="mic" {...props} />;
 export const MicOffIcon = (props) => <Icon name="micOff" {...props} />;
 export const SpeakerIcon = (props) => <Icon name="volume2" {...props} />;
+export const VideoIcon = (props) => <Icon name="video" {...props} />;
+export const VideoOffIcon = (props) => <Icon name="videoOff" {...props} />;
+export const ScreenShareIcon = (props) => <Icon name="monitor" {...props} />;
+export const MaximizeIcon = (props) => <Icon name="maximize2" {...props} />;
+export const MinimizeIcon = (props) => <Icon name="minimize2" {...props} />;
 
 export default Icon;

@@ -10,6 +10,7 @@ import {
   ReplyIcon,
   TrashIcon,
   UsersIcon,
+  VideoIcon,
 } from "../common/Icons";
 import {
   formatDateDivider,
@@ -60,6 +61,11 @@ export function MessageThread({
   onOpenTask,
   onBackMobile,
   onStartCall,
+  onStartVideoCall,
+  onJoinHuddle,
+  onJoinVideoHuddle,
+  activeHuddleParticipants = [],
+  inThisHuddle = false,
   callBusy = false,
 }) {
   const currentUserId = getEntityId(currentUser);
@@ -179,20 +185,84 @@ export function MessageThread({
           </div>
         </div>
 
-        {/* Participant pill + Call button */}
+        {/* Participant pill + Call / Huddle buttons */}
         <div className="flex items-center gap-2">
           {conversation.type === "direct" && onStartCall && (
-            <button
-              type="button"
-              onClick={onStartCall}
-              disabled={callBusy}
-              className="flex items-center gap-1.5 rounded-md border border-border bg-surface-subtle px-2.5 py-1.5 text-[12px] font-medium text-text-secondary hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300 dark:hover:bg-emerald-900/30 dark:hover:text-emerald-400 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-              title={callBusy ? "Call in progress" : "Voice call"}
-            >
-              <PhoneIcon className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Call</span>
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={onStartCall}
+                disabled={callBusy}
+                className="flex items-center gap-1.5 rounded-md border border-border bg-surface-subtle px-2.5 py-1.5 text-[12px] font-medium text-text-secondary hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300 dark:hover:bg-emerald-900/30 dark:hover:text-emerald-400 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                title={callBusy ? "Call in progress" : "Voice call"}
+              >
+                <PhoneIcon className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Call</span>
+              </button>
+
+              {onStartVideoCall && (
+                <button
+                  type="button"
+                  onClick={onStartVideoCall}
+                  disabled={callBusy}
+                  className="flex items-center gap-1.5 rounded-md border border-border bg-surface-subtle px-2.5 py-1.5 text-[12px] font-medium text-text-secondary hover:bg-brand/10 hover:text-brand hover:border-brand/40 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                  title={callBusy ? "Call in progress" : "Video call"}
+                >
+                  <VideoIcon className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline">Video</span>
+                </button>
+              )}
+            </>
           )}
+
+          {(conversation.type === "group" || conversation.type === "project") &&
+            onJoinHuddle && (
+              <>
+                <button
+                  type="button"
+                  onClick={onJoinHuddle}
+                  disabled={callBusy || inThisHuddle}
+                  className={`flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-[12px] font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
+                    activeHuddleParticipants.length > 0
+                      ? "border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400"
+                      : "border-border bg-surface-subtle text-text-secondary hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300 dark:hover:bg-emerald-900/30 dark:hover:text-emerald-400"
+                  }`}
+                  title={
+                    inThisHuddle
+                      ? "Currently in this huddle"
+                      : activeHuddleParticipants.length > 0
+                        ? "Join active group huddle"
+                        : "Start group voice huddle (up to 5)"
+                  }
+                >
+                  <PhoneIcon className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline">
+                    {inThisHuddle
+                      ? "In Huddle"
+                      : activeHuddleParticipants.length > 0
+                        ? `Join (${activeHuddleParticipants.length})`
+                        : "Huddle"}
+                  </span>
+                </button>
+
+                {onJoinVideoHuddle && !inThisHuddle && (
+                  <button
+                    type="button"
+                    onClick={onJoinVideoHuddle}
+                    disabled={callBusy}
+                    className="flex items-center gap-1.5 rounded-md border border-border bg-surface-subtle px-2.5 py-1.5 text-[12px] font-medium text-text-secondary hover:bg-brand/10 hover:text-brand hover:border-brand/40 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                    title={
+                      activeHuddleParticipants.length > 0
+                        ? "Join huddle with video"
+                        : "Start group video call (up to 5)"
+                    }
+                  >
+                    <VideoIcon className="h-3.5 w-3.5" />
+                    <span className="hidden sm:inline">Video</span>
+                  </button>
+                )}
+              </>
+            )}
 
           {Array.isArray(conversation.participants) &&
             conversation.participants.length > 0 && (
@@ -210,6 +280,42 @@ export function MessageThread({
           )}
         </div>
       </div>
+
+      {/* Live Huddle Banner for Group/Project chats */}
+      {(conversation.type === "group" || conversation.type === "project") &&
+        activeHuddleParticipants.length > 0 &&
+        !inThisHuddle &&
+        onJoinHuddle && (
+          <div className="flex items-center justify-between gap-3 border-b border-emerald-200 bg-emerald-50/90 px-4 py-2 text-left dark:border-emerald-900/50 dark:bg-emerald-950/40">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+              <p className="truncate text-[12px] font-medium text-emerald-800 dark:text-emerald-300">
+                Huddle active ({activeHuddleParticipants.length}/5):{" "}
+                {activeHuddleParticipants.map((p) => p.userName?.split(" ")[0]).join(", ")}
+              </p>
+            </div>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <button
+                type="button"
+                onClick={onJoinHuddle}
+                disabled={callBusy}
+                className="rounded-md bg-emerald-600 px-2.5 py-1 text-[12px] font-semibold text-white hover:bg-emerald-700 disabled:opacity-50 cursor-pointer"
+              >
+                Join Audio
+              </button>
+              {onJoinVideoHuddle && (
+                <button
+                  type="button"
+                  onClick={onJoinVideoHuddle}
+                  disabled={callBusy}
+                  className="rounded-md border border-emerald-600/30 bg-surface px-2.5 py-1 text-[12px] font-semibold text-emerald-700 hover:bg-emerald-50 dark:text-emerald-300 disabled:opacity-50 cursor-pointer"
+                >
+                  Join Video
+                </button>
+              )}
+            </div>
+          </div>
+        )}
 
       {/* Scrollable Messages */}
       <div

@@ -10,6 +10,7 @@ export function ConversationList({
   onOpenNewChat,
   currentUserId,
   onlineIds = [],
+  huddlesByConv = {},
   wsConnected = false,
   loading = false,
 }) {
@@ -127,6 +128,7 @@ export function ConversationList({
           filteredConversations.map((conv) => {
             const isActive = conv._id === activeConversationId;
             const unread = Number(conv.unreadCount || 0);
+            const activeHuddleCount = (huddlesByConv[conv._id] || []).length;
             const { title, avatarUser, isOnline } = getConversationDisplay(
               conv,
               currentUserId,
@@ -176,9 +178,17 @@ export function ConversationList({
                     >
                       {title}
                     </span>
-                    <span className="shrink-0 text-[11px] text-text-tertiary">
-                      {formatRelativeTime(conv.lastMessageAt || conv.createdAt)}
-                    </span>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {activeHuddleCount > 0 && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400">
+                          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                          {activeHuddleCount}
+                        </span>
+                      )}
+                      <span className="text-[11px] text-text-tertiary">
+                        {formatRelativeTime(conv.lastMessageAt || conv.createdAt)}
+                      </span>
+                    </div>
                   </div>
 
                   <div className="mt-0.5 flex items-center justify-between gap-2">
