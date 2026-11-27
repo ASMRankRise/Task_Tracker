@@ -219,6 +219,7 @@ export function ChatProvider({ children }) {
       if (Array.isArray(event.onlineIds)) {
         setOnlineIds(event.onlineIds);
       }
+      callEventHandlerRef.current?.(event);
       return;
     }
 
@@ -362,8 +363,11 @@ export function ChatProvider({ children }) {
       typingTimersRef.current.set(timerKey, timeout);
     }
 
-    // ── Forward call:* events to CallContext ───────────────────
-    if (typeof event.type === "string" && event.type.startsWith("call:")) {
+    // ── Forward call:* and huddle:* events to CallContext ────────
+    if (
+      typeof event.type === "string" &&
+      (event.type.startsWith("call:") || event.type.startsWith("huddle:"))
+    ) {
       callEventHandlerRef.current?.(event);
     }
     };

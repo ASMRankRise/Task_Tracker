@@ -1,11 +1,13 @@
 import { useCall } from "../../hooks/useCall";
-import { PhoneIcon, PhoneOffIcon } from "../common/Icons";
+import { PhoneIcon, PhoneOffIcon, VideoIcon } from "../common/Icons";
 import { Avatar } from "../common/Avatar";
 
 export default function IncomingCallModal() {
-  const { callState, remoteUserName, acceptCall, rejectCall } = useCall();
+  const { callState, callType, remoteUserName, acceptCall, rejectCall } = useCall();
 
   if (callState !== "incoming-ringing") return null;
+
+  const isVideo = callType === "video";
 
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm">
@@ -22,12 +24,11 @@ export default function IncomingCallModal() {
           {remoteUserName || "Someone"}
         </h2>
         <p className="mt-1 text-sm text-text-secondary animate-pulse">
-          Incoming voice call…
+          {isVideo ? "Incoming video call…" : "Incoming voice call…"}
         </p>
 
         {/* Action buttons */}
         <div className="mt-8 flex items-center gap-8">
-          {/* Reject */}
           <button
             type="button"
             onClick={rejectCall}
@@ -37,14 +38,17 @@ export default function IncomingCallModal() {
             <PhoneOffIcon className="h-6 w-6" />
           </button>
 
-          {/* Accept */}
           <button
             type="button"
             onClick={acceptCall}
             className="flex h-14 w-14 items-center justify-center rounded-full bg-emerald-600 text-white shadow-lg transition-transform hover:scale-110 active:scale-95 animate-bounce cursor-pointer"
             aria-label="Accept call"
           >
-            <PhoneIcon className="h-6 w-6" />
+            {isVideo ? (
+              <VideoIcon className="h-6 w-6" />
+            ) : (
+              <PhoneIcon className="h-6 w-6" />
+            )}
           </button>
         </div>
       </div>

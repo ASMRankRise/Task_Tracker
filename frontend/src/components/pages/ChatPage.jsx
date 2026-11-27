@@ -54,7 +54,7 @@ export function ChatPage({ user }) {
   const { projects, fetchProjects } = useProjects();
   const taskState = useTasks(effectiveUser, { limit: 100 });
   const { fetchTasks } = taskState;
-  const { startCall, callState } = useCall();
+  const { startCall, joinHuddle, callState, callMode, huddleConvId, huddlesByConv } = useCall();
 
   const [newChatOpen, setNewChatOpen] = useState(false);
   const [replyTo, setReplyTo] = useState(null);
@@ -162,7 +162,7 @@ export function ChatPage({ user }) {
     [typingByConv, activeConversationId],
   );
 
-  const handleStartDirectCall = () => {
+  const handleStartDirectCall = (video = false) => {
     if (!activeConversation || activeConversation.type !== "direct") return;
     const { otherParticipant, title } = getConversationDisplay(
       activeConversation,
@@ -171,7 +171,25 @@ export function ChatPage({ user }) {
     );
     const targetId = getEntityId(otherParticipant);
     if (!targetId) return;
-    void startCall(targetId, otherParticipant?.name || title);
+    void startCall(targetId, otherParticipant?.name || title, { video });
+  };
+
+  const handleJoinGroupHuddle = (video = false) => {
+    if (
+      !activeConversation ||
+      (activeConversation.type !== "group" && activeConversation.type !== "project")
+    ) {
+      return;
+    }
+    const { title } = getConversationDisplay(
+      activeConversation,
+      currentUserId,
+      onlineIds,
+    );
+    const recipientIds = (activeConversation.participants || [])
+      .map((p) => getEntityId(p))
+      .filter(Boolean);
+    void joinHuddle(activeConversation._id, title, recipientIds, { video });
   };
 
   const handleSelectConversation = (convId) => {
@@ -260,6 +278,7 @@ export function ChatPage({ user }) {
           }}
           currentUserId={currentUserId}
           onlineIds={onlineIds}
+          huddlesByConv={huddlesByConv}
           wsConnected={wsConnected}
           loading={loadingConversations}
         />
@@ -287,7 +306,17 @@ export function ChatPage({ user }) {
             onDeleteMessage={handleDeleteMessage}
             onOpenTask={handleOpenLinkedTask}
             onBackMobile={() => setMobileShowThread(false)}
-            onStartCall={handleStartDirectCall}
+            onStartCall={() => handleStartDirectCall(false)}
+            onStartVideoCall={() => handleStartDirectCall(true)}
+            onJoinHuddle={() => handleJoinGroupHuddle(false)}
+            onJoinVideoHuddle={() => handleJoinGroupHuddle(true)}
+            activeHuddleParticipants={
+              activeConversation ? huddlesByConv[activeConversation._id] || [] : []
+            }
+            inThisHuddle={
+              callMode === "huddle" &&
+              Boolean(activeConversation && huddleConvId === activeConversation._id)
+            }
             callBusy={callState !== "idle"}
           />
         </div>

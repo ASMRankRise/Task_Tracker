@@ -1,9 +1,21 @@
 import { DurableObject } from "cloudflare:workers";
 
 const HUB_MAX_FRAME_BYTES = 16384;
+const MAX_HUDDLE_PARTICIPANTS = 5;
+
+const CALL_RELAY_TYPES = new Set([
+  "call:offer",
+  "call:answer",
+  "call:ice",
+  "call:reject",
+  "call:hangup",
+  "call:busy",
+  "call:media_state",
+]);
 
 /**
- * Durable Object coordinator for workspace internal chat WebSockets.
+ * Durable Object coordinator for workspace internal chat WebSockets,
+ * 1-to-1 WebRTC call signaling, and Mesh group voice huddles.
  * Uses Cloudflare WebSocket Hibernation so idle clients consume zero compute.
  */
 export class ChatHubDO extends DurableObject {
@@ -20,6 +32,122 @@ export class ChatHubDO extends DurableObject {
       }
     }
     return [...ids];
+  }
+
+  getHuddleParticipants(conversationId, excludeWs = null) {
+    const targetConvId = String(conversationId || "");
+    if (!targetConvId) return [];
+    const byUser = new Map();
+    for (const ws of this.ctx.getWebSockets()) {
+      if (excludeWs && ws === excludeWs) continue;
+      const meta = ws.deserializeAttachment();
+      if (meta?.userId && meta?.huddleConvId === targetConvId) {
+        const uid = String(meta.userId);
+        if (!byUser.has(uid)) {
+          byUser.set(uid, {
+            userId: uid,
+            userName: String(meta.userName || "Teammate"),
+            cameraEnabled: Boolean(meta.cameraEnabled),
+            isScreenSharing: Boolean(meta.isScreenSharing),
+          });
+        }
+      }
+    }
+    return [...byUser.values()];
+  }
+
+  getAllActiveHuddles(excludeWs = null) {
+    const map = {};
+    const seenByConv = new Map();
+    for (const ws of this.ctx.getWebSockets()) {
+      if (excludeWs && ws === excludeWs) continue;
+      const meta = ws.deserializeAttachment();
+      if (!meta?.userId || !meta?.huddleConvId) continue;
+      const cid = String(meta.huddleConvId);
+      const uid = String(meta.userId);
+      if (!seenByConv.has(cid)) seenByConv.set(cid, new Set());
+      const seen = seenByConv.get(cid);
+      if (seen.has(uid)) continue;
+      seen.add(uid);
+      if (!map[cid]) map[cid] = [];
+      map[cid].push({
+        userId: uid,
+        userName: String(meta.userName || "Teammate"),
+        cameraEnabled: Boolean(meta.cameraEnabled),
+        isScreenSharing: Boolean(meta.isScreenSharing),
+      });
+    }
+    return map;
+  }
+
+  sendToUser(userId, payloadString) {
+    for (const targetWs of this.ctx.getWebSockets(String(userId))) {
+      try {
+        targetWs.send(payloadString);
+      } catch {
+        // Ignore disconnected socket
+      }
+    }
+  }
+
+  broadcastHuddleStatus(conversationId, participants, recipientIds = null) {
+    const payload = JSON.stringify({
+      type: "huddle:status",
+      conversationId: String(conversationId),
+      participants,
+    });
+
+    if (Array.isArray(recipientIds) && recipientIds.length > 0) {
+      const uniqueIds = [...new Set(recipientIds.filter(Boolean).map(String))];
+      for (const uid of uniqueIds) {
+        this.sendToUser(uid, payload);
+      }
+      return;
+    }
+
+    for (const sock of this.ctx.getWebSockets()) {
+      try {
+        sock.send(payload);
+      } catch {
+        // Ignore disconnected socket
+      }
+    }
+  }
+
+  leaveHuddleForSocket(ws, recipientIds = null, isClosing = false) {
+    const meta = ws.deserializeAttachment() || {};
+    const convId = meta?.huddleConvId ? String(meta.huddleConvId) : "";
+    const userId = meta?.userId ? String(meta.userId) : "";
+    if (!convId || !userId) return;
+
+    if (!isClosing) {
+      try {
+        ws.serializeAttachment({
+          ...meta,
+          huddleConvId: null,
+          cameraEnabled: false,
+          isScreenSharing: false,
+        });
+      } catch {
+        // Ignore if socket already closed
+      }
+    }
+
+    const remaining = this.getHuddleParticipants(convId, isClosing ? ws : null);
+    const stillInHuddle = remaining.some((p) => p.userId === userId);
+
+    if (!stillInHuddle) {
+      const leftPayload = JSON.stringify({
+        type: "huddle:peer_left",
+        conversationId: convId,
+        userId,
+      });
+      for (const peer of remaining) {
+        this.sendToUser(peer.userId, leftPayload);
+      }
+    }
+
+    this.broadcastHuddleStatus(convId, remaining, recipientIds);
   }
 
   broadcastPresence() {
@@ -55,6 +183,7 @@ export class ChatHubDO extends DurableObject {
       server.serializeAttachment({
         userId: String(userId),
         userName: String(userName),
+        huddleConvId: null,
       });
 
       const onlineIds = this.getOnlineUserIds();
@@ -63,6 +192,7 @@ export class ChatHubDO extends DurableObject {
           type: "chat:connected",
           userId: String(userId),
           onlineIds,
+          activeHuddles: this.getAllActiveHuddles(),
         }),
       );
 
@@ -127,6 +257,8 @@ export class ChatHubDO extends DurableObject {
 
       const data = JSON.parse(text);
       const meta = ws.deserializeAttachment() || {};
+      const senderId = String(meta.userId || "");
+      const senderName = String(meta.userName || "Teammate");
 
       if (data?.type === "ping") {
         ws.send(JSON.stringify({ type: "pong", ts: Date.now() }));
@@ -143,12 +275,21 @@ export class ChatHubDO extends DurableObject {
         return;
       }
 
+      if (data?.type === "huddle:sync") {
+        ws.send(
+          JSON.stringify({
+            type: "huddle:snapshot",
+            activeHuddles: this.getAllActiveHuddles(),
+          }),
+        );
+        return;
+      }
+
       if (
         data?.type === "typing" &&
         data.conversationId &&
         Array.isArray(data.recipientIds)
       ) {
-        const senderId = String(meta.userId || "");
         if (!senderId) return;
 
         const targetIds = [
@@ -159,35 +300,126 @@ export class ChatHubDO extends DurableObject {
           type: "chat:typing",
           conversationId: String(data.conversationId),
           userId: senderId,
-          userName: meta.userName || "Teammate",
+          userName: senderName,
           isTyping: Boolean(data.isTyping),
         });
 
         for (const uid of targetIds) {
           if (uid === senderId) continue;
-          for (const targetWs of this.ctx.getWebSockets(uid)) {
-            try {
-              targetWs.send(event);
-            } catch {
-              // Ignore disconnected socket
-            }
-          }
+          this.sendToUser(uid, event);
         }
+        return;
       }
 
-      // ── Voice-call signaling relay ───────────────────────────
-      const CALL_TYPES = new Set([
-        "call:offer",
-        "call:answer",
-        "call:ice",
-        "call:reject",
-        "call:hangup",
-        "call:busy",
-      ]);
+      // ── Group Voice Huddle Room Signaling ────────────────────
+      if (data?.type === "huddle:join" && data.conversationId) {
+        if (!senderId) return;
+        const convId = String(data.conversationId);
+        const recipientIds = Array.isArray(data.recipientIds)
+          ? [...new Set(data.recipientIds.slice(0, 100).filter(Boolean).map(String))]
+          : [];
 
-      if (CALL_TYPES.has(data?.type)) {
-        const senderId = String(meta.userId || "");
-        const senderName = meta.userName || "Teammate";
+        if (meta.huddleConvId && meta.huddleConvId !== convId) {
+          this.leaveHuddleForSocket(ws, null, false);
+        }
+
+        const currentPeers = this.getHuddleParticipants(convId);
+        const alreadyIn = currentPeers.some((p) => p.userId === senderId);
+        if (!alreadyIn && currentPeers.length >= MAX_HUDDLE_PARTICIPANTS) {
+          ws.send(
+            JSON.stringify({
+              type: "huddle:full",
+              conversationId: convId,
+              maxParticipants: MAX_HUDDLE_PARTICIPANTS,
+            }),
+          );
+          return;
+        }
+
+        ws.serializeAttachment({
+          ...meta,
+          huddleConvId: convId,
+          cameraEnabled: Boolean(data.cameraEnabled),
+          isScreenSharing: Boolean(data.isScreenSharing),
+        });
+
+        const existingPeers = currentPeers.filter((p) => p.userId !== senderId);
+        ws.send(
+          JSON.stringify({
+            type: "huddle:joined",
+            conversationId: convId,
+            peers: existingPeers,
+          }),
+        );
+
+        const peerJoinedPayload = JSON.stringify({
+          type: "huddle:peer_joined",
+          conversationId: convId,
+          userId: senderId,
+          userName: senderName,
+          cameraEnabled: Boolean(data.cameraEnabled),
+          isScreenSharing: Boolean(data.isScreenSharing),
+        });
+        for (const peer of existingPeers) {
+          this.sendToUser(peer.userId, peerJoinedPayload);
+        }
+
+        const updatedParticipants = this.getHuddleParticipants(convId);
+        const notifyList = [...new Set([...recipientIds, ...updatedParticipants.map((p) => p.userId)])];
+        this.broadcastHuddleStatus(convId, updatedParticipants, notifyList);
+
+        if (existingPeers.length === 0 && recipientIds.length > 0) {
+          const startedPayload = JSON.stringify({
+            type: "huddle:started",
+            conversationId: convId,
+            startedByUserId: senderId,
+            startedByName: senderName,
+          });
+          for (const uid of recipientIds) {
+            if (uid === senderId) continue;
+            this.sendToUser(uid, startedPayload);
+          }
+        }
+        return;
+      }
+
+      if (data?.type === "huddle:leave") {
+        const recipientIds = Array.isArray(data.recipientIds)
+          ? [...new Set(data.recipientIds.slice(0, 100).filter(Boolean).map(String))]
+          : null;
+        this.leaveHuddleForSocket(ws, recipientIds, false);
+        return;
+      }
+
+      if (data?.type === "huddle:media_state" && data.conversationId) {
+        if (!senderId) return;
+        const convId = String(data.conversationId);
+        const cameraEnabled = Boolean(data.cameraEnabled);
+        const isScreenSharing = Boolean(data.isScreenSharing);
+
+        ws.serializeAttachment({
+          ...meta,
+          cameraEnabled,
+          isScreenSharing,
+        });
+
+        const payload = JSON.stringify({
+          type: "huddle:peer_media",
+          conversationId: convId,
+          userId: senderId,
+          cameraEnabled,
+          isScreenSharing,
+        });
+
+        for (const peer of this.getHuddleParticipants(convId)) {
+          if (peer.userId === senderId) continue;
+          this.sendToUser(peer.userId, payload);
+        }
+        return;
+      }
+
+      // ── 1-to-1 & Mesh WebRTC Signaling Relay ─────────────────
+      if (CALL_RELAY_TYPES.has(data?.type)) {
         const targetUserId = String(data.targetUserId || "");
         if (!senderId || !targetUserId || senderId === targetUserId) return;
 
@@ -205,7 +437,9 @@ export class ChatHubDO extends DurableObject {
         }
 
         const targetSockets = this.ctx.getWebSockets(targetUserId);
-        if (data.type === "call:offer" && targetSockets.length === 0) {
+        const mode = data.mode === "huddle" || data.mode === "renegotiate" ? data.mode : "direct";
+
+        if (data.type === "call:offer" && mode === "direct" && targetSockets.length === 0) {
           ws.send(
             JSON.stringify({
               type: "call:unavailable",
@@ -221,11 +455,20 @@ export class ChatHubDO extends DurableObject {
           fromUserId: senderId,
           fromUserName: senderName,
         };
+        if (data.mode) relay.mode = String(data.mode);
+        if (data.conversationId) relay.conversationId = String(data.conversationId);
+        if (data.callType === "video" || data.callType === "audio") {
+          relay.callType = data.callType;
+        }
         if (data.type === "call:offer" || data.type === "call:answer") {
           relay.sdp = data.sdp;
         }
         if (data.type === "call:ice") {
           relay.candidate = data.candidate;
+        }
+        if (data.type === "call:media_state") {
+          relay.cameraEnabled = Boolean(data.cameraEnabled);
+          relay.isScreenSharing = Boolean(data.isScreenSharing);
         }
 
         const payload = JSON.stringify(relay);
@@ -243,6 +486,7 @@ export class ChatHubDO extends DurableObject {
   }
 
   async webSocketClose(ws) {
+    this.leaveHuddleForSocket(ws, null, true);
     try {
       ws.close();
     } catch {
@@ -252,6 +496,7 @@ export class ChatHubDO extends DurableObject {
   }
 
   async webSocketError(ws) {
+    this.leaveHuddleForSocket(ws, null, true);
     try {
       ws.close();
     } catch {
