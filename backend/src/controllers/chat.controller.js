@@ -671,6 +671,40 @@ const deleteCustomSticker = async (req, res) => {
   }
 };
 
+// GET /api/chat/ice-servers
+const getIceServers = async (req, res) => {
+  try {
+    const servers = [
+      { urls: "stun:stun.l.google.com:19302" },
+      { urls: "stun:stun1.l.google.com:19302" },
+    ];
+
+    // Optional: Metered.ca free-tier TURN credentials if configured in Worker secrets
+    const turnDomain = process.env.METERED_TURN_DOMAIN;
+    const turnApiKey = process.env.METERED_TURN_API_KEY;
+    if (turnDomain && turnApiKey) {
+      try {
+        const turnRes = await fetch(
+          `https://${encodeURIComponent(turnDomain)}/api/v1/turn/credentials?apiKey=${encodeURIComponent(turnApiKey)}`,
+        );
+        if (turnRes.ok) {
+          const turnServers = await turnRes.json();
+          if (Array.isArray(turnServers)) {
+            servers.push(...turnServers);
+          }
+        }
+      } catch {
+        // TURN fetch failed; fall back to STUN only
+      }
+    }
+
+    return res.status(200).json({ iceServers: servers });
+  } catch (error) {
+    console.error("[Chat] ICE servers error:", error.message || error);
+    return res.status(500).json({ message: "Failed to fetch ICE servers" });
+  }
+};
+
 module.exports = {
   issueWebSocketTicket,
   getChatUsers,
@@ -688,4 +722,5 @@ module.exports = {
   uploadCustomSticker,
   getCustomStickerImage,
   deleteCustomSticker,
+  getIceServers,
 };

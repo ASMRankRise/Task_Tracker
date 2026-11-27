@@ -6,6 +6,7 @@ import {
   EditIcon,
   HashIcon,
   LinkIcon,
+  PhoneIcon,
   ReplyIcon,
   TrashIcon,
   UsersIcon,
@@ -58,6 +59,8 @@ export function MessageThread({
   onDeleteMessage,
   onOpenTask,
   onBackMobile,
+  onStartCall,
+  callBusy = false,
 }) {
   const currentUserId = getEntityId(currentUser);
   const isSuperAdmin = currentUser?.role === "superadmin";
@@ -176,9 +179,23 @@ export function MessageThread({
           </div>
         </div>
 
-        {/* Participant pill */}
-        {Array.isArray(conversation.participants) &&
-          conversation.participants.length > 0 && (
+        {/* Participant pill + Call button */}
+        <div className="flex items-center gap-2">
+          {conversation.type === "direct" && onStartCall && (
+            <button
+              type="button"
+              onClick={onStartCall}
+              disabled={callBusy}
+              className="flex items-center gap-1.5 rounded-md border border-border bg-surface-subtle px-2.5 py-1.5 text-[12px] font-medium text-text-secondary hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300 dark:hover:bg-emerald-900/30 dark:hover:text-emerald-400 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              title={callBusy ? "Call in progress" : "Voice call"}
+            >
+              <PhoneIcon className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Call</span>
+            </button>
+          )}
+
+          {Array.isArray(conversation.participants) &&
+            conversation.participants.length > 0 && (
             <div
               className="hidden sm:flex items-center gap-1.5 rounded-md border border-border bg-surface-subtle px-2.5 py-1 text-[12px] text-text-secondary max-w-[240px]"
               title={conversation.participants.map((p) => p.name).join(", ")}
@@ -191,6 +208,7 @@ export function MessageThread({
               </span>
             </div>
           )}
+        </div>
       </div>
 
       {/* Scrollable Messages */}

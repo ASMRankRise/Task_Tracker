@@ -66,6 +66,7 @@ export function ChatProvider({ children }) {
   const typingTimersRef = useRef(new Map());
   const lastTypingSentRef = useRef(0);
   const handleWsEventRef = useRef(null);
+  const callEventHandlerRef = useRef(null);
 
   useEffect(() => {
     activeConvRef.current = activeConversationId;
@@ -359,6 +360,11 @@ export function ChatProvider({ children }) {
         }));
       }, 4000);
       typingTimersRef.current.set(timerKey, timeout);
+    }
+
+    // ── Forward call:* events to CallContext ───────────────────
+    if (typeof event.type === "string" && event.type.startsWith("call:")) {
+      callEventHandlerRef.current?.(event);
     }
     };
   }, [currentUserId, loadConversations, markConversationRead]);
@@ -682,6 +688,8 @@ export function ChatProvider({ children }) {
       deleteMessage,
       markConversationRead,
       sendTyping,
+      wsRef,
+      callEventHandlerRef,
     }),
     [
       conversations,

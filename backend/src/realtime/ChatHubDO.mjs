@@ -1,6 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
 
-const HUB_MAX_FRAME_BYTES = 8192;
+const HUB_MAX_FRAME_BYTES = 16384;
 
 /**
  * Durable Object coordinator for workspace internal chat WebSockets.
@@ -171,6 +171,69 @@ export class ChatHubDO extends DurableObject {
             } catch {
               // Ignore disconnected socket
             }
+          }
+        }
+      }
+
+      // ── Voice-call signaling relay ───────────────────────────
+      const CALL_TYPES = new Set([
+        "call:offer",
+        "call:answer",
+        "call:ice",
+        "call:reject",
+        "call:hangup",
+        "call:busy",
+      ]);
+
+      if (CALL_TYPES.has(data?.type)) {
+        const senderId = String(meta.userId || "");
+        const senderName = meta.userName || "Teammate";
+        const targetUserId = String(data.targetUserId || "");
+        if (!senderId || !targetUserId || senderId === targetUserId) return;
+
+        if (
+          (data.type === "call:offer" || data.type === "call:answer") &&
+          (!data.sdp || typeof data.sdp !== "object")
+        ) {
+          return;
+        }
+        if (
+          data.type === "call:ice" &&
+          (!data.candidate || typeof data.candidate !== "object")
+        ) {
+          return;
+        }
+
+        const targetSockets = this.ctx.getWebSockets(targetUserId);
+        if (data.type === "call:offer" && targetSockets.length === 0) {
+          ws.send(
+            JSON.stringify({
+              type: "call:unavailable",
+              targetUserId,
+              reason: "offline",
+            }),
+          );
+          return;
+        }
+
+        const relay = {
+          type: data.type,
+          fromUserId: senderId,
+          fromUserName: senderName,
+        };
+        if (data.type === "call:offer" || data.type === "call:answer") {
+          relay.sdp = data.sdp;
+        }
+        if (data.type === "call:ice") {
+          relay.candidate = data.candidate;
+        }
+
+        const payload = JSON.stringify(relay);
+        for (const targetWs of targetSockets) {
+          try {
+            targetWs.send(payload);
+          } catch {
+            // Ignore disconnected socket
           }
         }
       }

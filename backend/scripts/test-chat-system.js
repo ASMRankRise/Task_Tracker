@@ -503,6 +503,16 @@ async function runTests() {
     assert.strictEqual(lastBroadcast.event.type, "chat:custom_sticker_deleted");
   });
 
+  await test("11. getIceServers returns free Google STUN servers", async () => {
+    const req = { user: { userId: userAId, role: "user" } };
+    const res = createMockRes();
+    await chatController.getIceServers(req, res);
+
+    assert.strictEqual(res.statusCode, 200);
+    assert(Array.isArray(res.data?.iceServers));
+    assert(res.data.iceServers.some((s) => String(s.urls).startsWith("stun:")));
+  });
+
   // Restore originals
   Object.assign(ChatRepository, origRepo);
   chatBroker.broadcastToUsers = origBroadcast;
